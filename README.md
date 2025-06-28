@@ -1,4 +1,4 @@
-# The Platform Plugins Interface: Jarvis-CD
+# Jarvis-CD
 Jarvis-CD is a unified platform for deploying various applications, including
 storage systems and benchmarks. Many applications have complex configuration
 spaces and are difficult to deploy across different machines.
