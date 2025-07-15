@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<adios-config>
+<io name="atom">
+    <engine type="BP4">
+        <parameter key="substreams" value="1"/>
+    </engine>
+</io>
+<io name="custom">
+    <engine type="BP4">
+        <parameter key="substreams" value="1"/>
+    </engine>
+</io>
+<io name="read_dump">
+    <engine type="BP4">
+    </engine>
+</io>
+</adios-config>

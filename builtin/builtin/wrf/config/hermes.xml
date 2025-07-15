@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<adios-config>
+
+    <!-- <io name="wrfout_d01_2018-06-17_00:00:00"> -->
+    <io name="wrfout_d01_2019-11-26_12:00:00">
+
+
+        <engine type="Plugin">
+            <parameter key="PluginName" value="hermes"/>
+            <parameter key="PluginLibrary" value="hermes_engine"/>
+            <parameter key="ppn" value="##ppn##"/>
+            <parameter key="db_file" value="##db_path##"/>
+            <parameter key="execution_order" value="##Order##"/>
+        </engine>
+
+    </io>
+</adios-config>
