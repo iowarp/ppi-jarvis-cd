@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""
+Helper script for Jarvis bash completion.
+This script provides completion data without requiring full Jarvis initialization.
+"""
+
+import os
+import sys
+import yaml
+from pathlib import Path
+import json
+
+
+def get_builtin_dir():
+    """Get the builtin directory path."""
+    # Prefer development directory first (when running from source)
+    current_dir = Path(__file__).parent.parent.resolve()
+    dev_builtin = current_dir / 'builtin'
+    if dev_builtin.exists():
+        return str(dev_builtin)
+    
+    # Fallback to installed directory
+    home = Path.home()
+    builtin_dir = home / '.jarvis' / 'builtin'
+    if builtin_dir.exists():
+        return str(builtin_dir)
+    
+    return None
+
+
+def load_repositories():
+    """Load all configured repositories."""
+    repositories = []
+    
+    # Add builtin repository
+    builtin_dir = get_builtin_dir()
+    if builtin_dir:
+        repositories.append({'name': 'builtin', 'path': builtin_dir})
+    
+    # Load additional repositories from repos.yaml
+    repos_yaml = Path.home() / '.jarvis' / 'repos.yaml'
+    if repos_yaml.exists():
+        try:
+            with open(repos_yaml, 'r') as f:
+                config = yaml.safe_load(f)
+                repositories.extend(config.get('REPOS', []))
+        except Exception:
+            pass  # Ignore errors in loading repos.yaml
+    
+    return repositories
+
+
+def get_all_packages():
+    """Get all available package names."""
+    packages = set()
+    repositories = load_repositories()
+    
+    for repo in repositories:
+        repo_subdir = Path(repo['path']) / repo['name']
+        if repo_subdir.exists():
+            try:
+                # Get all entries and sort them for consistent results
+                entries = sorted([entry for entry in repo_subdir.iterdir() 
+                                if entry.is_dir() and not entry.name.startswith('_') and not entry.name.startswith('.')])
+                
+                for entry in entries:
+                    pkg_file = entry / 'pkg.py' 
+                    if pkg_file.exists():
+                        packages.add(entry.name)
+            except Exception as e:
+                # Debug: show what went wrong if needed
+                continue
+    
+    return sorted(list(packages))
+
+
+def get_pipeline_list():
+    """Get list of available pipelines."""
+    pipelines = []
+    config_dir = Path.home() / '.jarvis' / 'config'
+    if config_dir.exists():
+        try:
+            for entry in config_dir.iterdir():
+                if entry.is_dir() and not entry.name.startswith('.'):
+                    pipelines.append(entry.name)
+        except Exception:
+            pass
+    
+    return sorted(pipelines)
+
+
+def main():
+    """Main completion helper function."""
+    if len(sys.argv) < 2:
+        sys.exit(1)
+    
+    command = sys.argv[1]
+    
+    if command == 'packages':
+        packages = get_all_packages()
+        print(' '.join(packages))
+    elif command == 'pipelines':
+        pipelines = get_pipeline_list()
+        print(' '.join(pipelines))
+    elif command == 'commands':
+        # Static list of main commands
+        commands = [
+            'init', 'reset', 'config', 'bootstrap', 'hostfile', 'resource-graph',
+            'repo', 'env', 'cd', 'getcwd', 'path', 'pipeline', 'pkg', 'ssh', 'sched'
+        ]
+        print(' '.join(commands))
+    elif command == 'subcommands':
+        if len(sys.argv) < 3:
+            sys.exit(1)
+        
+        parent_cmd = sys.argv[2]
+        subcommands = {
+            'config': ['print', 'path'],
+            'bootstrap': ['from', 'list'],
+            'resource-graph': ['show', 'path', 'build', 'modify', 'add', 'filter'],
+            'repo': ['add', 'create', 'promote', 'remove', 'list'],
+            'env': ['build', 'destroy', 'path', 'show', 'list'],
+            'pipeline': ['list', 'create', 'load', 'update', 'run', 'print', 'reset', 
+                        'destroy', 'append', 'prepend', 'insert', 'start', 'stop', 
+                        'kill', 'clean', 'status', 'save', 'sbatch', 'pbs', 'env', 'index'],
+            'pkg': ['help', 'readme', 'configure', 'unlink', 'remove', 'src', 'root'],
+            'ssh': ['copy', 'distribute'],
+            'sched': ['hostfile']
+        }
+        
+        if parent_cmd in subcommands:
+            print(' '.join(subcommands[parent_cmd]))
+
+
+if __name__ == '__main__':
+    main()

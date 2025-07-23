@@ -9,7 +9,7 @@ from pathlib import Path
 ret = setuptools.setup(
     name="jarvis_cd",
     packages=setuptools.find_packages(),
-    scripts=['bin/jarvis'],
+    scripts=['bin/jarvis', 'bin/jarvis-completion-helper'],
     version="0.0.1",
     author="Luke Logan",
     author_email="llogan@hawk.iit.edu",
@@ -31,7 +31,10 @@ ret = setuptools.setup(
     install_requires=[
         'pandas',
         'pyyaml'
-    ]
+    ],
+    data_files=[
+        ('share/bash-completion/completions', ['completion/jarvis-completion.bash']),
+    ],
 )
 
 # Install the builtin directory to ~/.jarvis
