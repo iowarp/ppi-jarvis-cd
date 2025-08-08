@@ -149,3 +149,9 @@ This snapshots network/storage topology for package configuration (e.g., Hermes)
 Tips for hostfile before building:
 1) Include at least two representative nodes for multi-node deployments so valid networks can be detected.
 2) Avoid using the master/login node in the set you introspect unless representative of your deployment nodes.
+
+## License
+
+BSD-3-Clause License - see [LICENSE](LICENSE) file for details.
+
+**Copyright (c) 2024, Gnosis Research Center, Illinois Institute of Technology**
