@@ -1,0 +1,29 @@
+name: test_interceptor_pipeline
+env: chimaera
+
+# Define interceptors at the top level
+interceptors:
+  - pkg_type: example_interceptor
+    pkg_name: example_interceptor
+    library_path: /usr/lib/example_interceptor.so
+    custom_env_var: test_intercepted_value
+    debug_mode: true
+
+# Define the main pipeline packages
+pkgs:
+  - pkg_type: example_app
+    pkg_name: example_app1
+    message: "First app without interceptor"
+    output_file: app1_output.txt
+    
+  - pkg_type: example_app
+    pkg_name: example_app2
+    message: "Second app with interceptor"
+    output_file: app2_output.txt
+    interceptors:
+      - example_interceptor
+      
+  - pkg_type: example_app
+    pkg_name: example_app3
+    message: "Third app without interceptor"
+    output_file: app3_output.txt 

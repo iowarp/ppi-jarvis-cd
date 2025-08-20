@@ -212,6 +212,7 @@ class Pkg(ABC):
         self.config = None
         self.sub_pkgs = []
         self.sub_pkgs_dict = {}
+        self.interceptors_dict = {}
         self.env_path = None
         self.env = None
         self.mod_env = None
@@ -268,9 +269,11 @@ class Pkg(ABC):
             self.load(global_id, self.root)
             return self
         self.config = {
-            'sub_pkgs': []
+            'sub_pkgs': [],
+            'interceptors': {}
         }
         self.sub_pkgs = []
+        self.interceptors_dict = {}
         self.env_path = f'{self.config_dir}/env.yaml'
         if self.env is None:
             self.env = {}
@@ -301,6 +304,43 @@ class Pkg(ABC):
         if not with_config:
             return self
         self.config = YamlFile(self.config_path).load()
+        
+        # Ensure interceptors is initialized as a dictionary if not present
+        if 'interceptors' not in self.config:
+            self.config['interceptors'] = {}
+            
+        # Initialize interceptors_dict for constructed packages
+        if not hasattr(self, 'interceptors_dict'):
+            self.interceptors_dict = {}
+            
+        # Reconstruct interceptor packages from saved config (only for pipelines, not individual packages)
+        if self.__class__.__name__ == 'Pipeline' and isinstance(self.config['interceptors'], dict):
+            for interceptor_name, interceptor_config in self.config['interceptors'].items():
+                # Extract the interceptor type from the config
+                if 'pkg_type' in interceptor_config:
+                    interceptor_type = interceptor_config['pkg_type']
+                else:
+                    # For backward compatibility, try to infer from name
+                    interceptor_type = interceptor_name
+                    
+                interceptor_pkg = self.jarvis.construct_pkg(interceptor_type)
+                if interceptor_pkg is None:
+                    self.log(f'Could not find interceptor pkg: {interceptor_type}. Skipping.',
+                             Color.RED)
+                    continue
+                    
+                global_id = f'{self.global_id}.{interceptor_name}'
+                interceptor_pkg.load(global_id, self.root)
+                
+                # Configure the interceptor with saved parameters (exclude internal config keys)
+                internal_keys = {'pkg_type', 'sub_pkgs', 'interceptors'}
+                saved_config = {k: v for k, v in interceptor_config.items() if k not in internal_keys}
+                if saved_config:  # Only configure if there are parameters
+                    interceptor_pkg.configure(**saved_config)
+                
+                # Store the constructed package
+                self.interceptors_dict[interceptor_name] = interceptor_pkg
+        
         for sub_pkg_type, sub_pkg_id in self.config['sub_pkgs']:
             sub_pkg = self.jarvis.construct_pkg(sub_pkg_type)
             if sub_pkg is None:
@@ -310,6 +350,17 @@ class Pkg(ABC):
             sub_pkg.load(f'{self.global_id}.{sub_pkg_id}', self.root)
             self.sub_pkgs.append(sub_pkg)
             self.sub_pkgs_dict[sub_pkg.pkg_id] = sub_pkg
+        
+        # For non-Pipeline packages, ensure mod_env is initialized and process interceptors
+        if self.__class__.__name__ != 'Pipeline':
+            # Initialize mod_env if not already set
+            if not hasattr(self, 'mod_env') or self.mod_env is None:
+                self.mod_env = self.env.copy() if self.env else {}
+            
+            # If this package has interceptors configured, apply them
+            if 'interceptors' in self.config and self.config['interceptors'] and isinstance(self.config['interceptors'], list):
+                self._process_interceptors()
+        
         self._init()
         return self
 
@@ -412,7 +463,23 @@ class Pkg(ABC):
         if pkg is None:
             raise Exception(f'Could not find pkg: {pkg_type}')
         global_id = f'{self.global_id}.{pkg_id}'
-        pkg.create(global_id)
+        pkg._init_common(global_id, self.root if self.root else self)
+        if os.path.exists(pkg.config_path):
+            pkg.load(global_id, self.root if self.root else self)
+        else:
+            pkg.config = {
+                'sub_pkgs': [],
+                'interceptors': {}
+            }
+            pkg.sub_pkgs = []
+            pkg.interceptors_dict = {}
+            pkg.env_path = f'{pkg.config_dir}/env.yaml'
+            if pkg.env is None:
+                pkg.env = {}
+            os.makedirs(pkg.config_dir, exist_ok=True)
+            if pkg.shared_dir is not None:
+                os.makedirs(pkg.shared_dir, exist_ok=True)
+            pkg._init()
         if do_configure:
             pkg.update_env(self.env)
             pkg.configure(**kwargs)
@@ -431,6 +498,26 @@ class Pkg(ABC):
         :return: self
         """
         return self.insert(None, pkg_type, pkg_id, do_configure, **kwargs)
+
+    def add_interceptor(self, pkg_name, interceptor_pkg):
+        """
+        Add an interceptor package configuration and constructed package
+        
+        :param pkg_name: The name/key for the interceptor
+        :param interceptor_pkg: The constructed interceptor package object
+        :return: self
+        """
+        if 'interceptors' not in self.config:
+            self.config['interceptors'] = {}
+        
+        # Store the interceptor's configuration parameters in self.config
+        interceptor_config = interceptor_pkg.config.copy()
+        interceptor_config['pkg_type'] = interceptor_pkg.pkg_type
+        self.config['interceptors'][pkg_name] = interceptor_config
+        
+        # Store the constructed package object separately
+        self.interceptors_dict[pkg_name] = interceptor_pkg
+        return self
 
     def prepend(self, pkg_type, pkg_id=None, do_configure=True, **kwargs):
         """
@@ -502,17 +589,28 @@ class Pkg(ABC):
     def env_show(self):
         print(yaml.dump(self.env))
 
-    def update_env(self, env, mod_env=None):
+    def update_env(self, env):
         """
         Update the current environment for this program
 
         :param env: The environment dict
-        :param mod_env: The modified environment dict
         :return:
         """
         env.update(self.env)
         self.env = env
-        self.mod_env = mod_env
+        
+        # Create mod_env as a copy of env, but preserve any existing mod_env-specific variables
+        new_mod_env = env.copy()
+        if hasattr(self, 'mod_env') and self.mod_env:
+            # Preserve LD_PRELOAD and other mod_env-specific variables
+            mod_env_keys = {'LD_PRELOAD'}
+            for key in mod_env_keys:
+                if key in self.mod_env and key not in new_mod_env:
+                    new_mod_env[key] = self.mod_env[key]
+                elif key in self.mod_env and self.mod_env[key] != new_mod_env.get(key, ''):
+                    # Merge if both exist and are different
+                    new_mod_env[key] = self.mod_env[key]
+        self.mod_env = new_mod_env
 
     @staticmethod
     def _track_env(env, env_track_dict=None):
@@ -747,6 +845,18 @@ class SimplePkg(Pkg):
                 'type': bool,
                 'default': False
             },
+            {
+                'name': 'interceptors',
+                'msg': 'A list of interceptor package names',
+                'type': list,
+                'args': [
+                    {
+                        'name': 'interceptor',
+                        'msg': 'A string representing an interceptor package name',
+                        'type': str,
+                    }
+                ]
+            }
         ]
         return menu
 
@@ -774,6 +884,7 @@ class SimplePkg(Pkg):
             kwargs['stderr'] = kwargs['stdout']
         self.update_config(kwargs, rebuild=kwargs['reinit'])
         self._configure(**kwargs)
+        self._process_interceptors()
 
     @abstractmethod
     def _configure(self, **kwargs):
@@ -786,6 +897,33 @@ class SimplePkg(Pkg):
         :return: None
         """
         pass
+
+    def _process_interceptors(self):
+        """
+        Process the interceptors list and call modify_env() on each interceptor.
+        
+        :return: None
+        """
+        if 'interceptors' not in self.config or not self.config['interceptors']:
+            return
+            
+        # Access the root pipeline to get constructed interceptor packages
+        if self.root and hasattr(self.root, 'interceptors_dict'):
+            root_interceptors = self.root.interceptors_dict
+            
+            for interceptor_name in self.config['interceptors']:
+                if interceptor_name in root_interceptors:
+                    interceptor_pkg = root_interceptors[interceptor_name]
+                    if hasattr(interceptor_pkg, 'modify_env'):
+                        # Update interceptor's environment with the environment pointer
+                        interceptor_pkg.update_env(self.env)
+                        # Call modify_env to update environment
+                        interceptor_pkg.modify_env()
+                        # Update our environment with changes from interceptor
+                        self.env.update(interceptor_pkg.env)
+                        # Also update our mod_env with interceptor's mod_env changes (for LD_PRELOAD, etc.)
+                        if hasattr(self, 'mod_env') and self.mod_env:
+                            self.mod_env.update(interceptor_pkg.mod_env)
 
     def update_config(self, kwargs, rebuild=False):
         """
@@ -1010,13 +1148,66 @@ class Pipeline(Pkg):
             self.config['JARVIS_YAML_PATH'] = path
         if 'env' in config:
             self.copy_static_env(config['env'])
+        
+        # Ensure interceptors is initialized as a dictionary
+        if 'interceptors' not in self.config:
+            self.config['interceptors'] = {}
+        
+        # Store original YAML interceptors list for processing
+        yaml_interceptors = config.get('interceptors', [])
+        
+        # Process interceptors defined at the top level
+        if yaml_interceptors:
+            for interceptor_config in yaml_interceptors:
+                interceptor_type = interceptor_config['pkg_type']
+                interceptor_name = interceptor_config['pkg_name']
+                interceptor_pkg_config = interceptor_config.copy()
+                del interceptor_pkg_config['pkg_type']
+                del interceptor_pkg_config['pkg_name']
+                
+                # Create and configure the interceptor
+                interceptor_pkg = self.jarvis.construct_pkg(interceptor_type)
+                if interceptor_pkg is None:
+                    self.log(f'Could not find interceptor pkg: {interceptor_type}', Color.RED)
+                    continue
+                    
+                global_id = f'{self.global_id}.{interceptor_name}'
+                interceptor_pkg.create(global_id)
+                if do_configure:
+                    interceptor_pkg.update_env(self.env)
+                    interceptor_pkg.configure(**interceptor_pkg_config)
+                
+                # Add interceptor to the config dictionary
+                self.add_interceptor(interceptor_name, interceptor_pkg)
+                
+        
+        # Process packages (defer configuration for packages with interceptors)
+        packages_to_configure = []
         for sub_pkg in config['pkgs']:
             pkg_type = sub_pkg['pkg_type']
             pkg_name = sub_pkg['pkg_name']
-            del sub_pkg['pkg_type']
-            del sub_pkg['pkg_name']
-            self.append(pkg_type, pkg_name,
-                        do_configure, **sub_pkg)
+            pkg_config = sub_pkg.copy()
+            del pkg_config['pkg_type']
+            del pkg_config['pkg_name']
+            
+            # Check if package has interceptors
+            has_interceptors = 'interceptors' in pkg_config and pkg_config['interceptors']
+            
+            if has_interceptors:
+                # Add package without configuring it first
+                self.append(pkg_type, pkg_name, False, **pkg_config)
+                # Store for later configuration
+                packages_to_configure.append((self.get_pkg(pkg_name), pkg_config))
+            else:
+                # Configure immediately for packages without interceptors
+                self.append(pkg_type, pkg_name, do_configure, **pkg_config)
+        
+        # Now configure packages that have interceptors
+        for pkg, pkg_config in packages_to_configure:
+            if do_configure:
+                pkg.update_env(self.env)
+                pkg.configure(**pkg_config)
+                
         return self
 
     def from_yaml_iter_dict(self, config, path=None, do_configure=True):
@@ -1207,10 +1398,10 @@ class Pipeline(Pkg):
 
             start = time.time()
             if isinstance(pkg, Service):
-                pkg.update_env(self.env, self.mod_env)
+                pkg.update_env(self.env)
                 pkg.start()
             if isinstance(pkg, Interceptor):
-                pkg.update_env(self.env, self.mod_env)
+                pkg.update_env(self.env)
                 pkg.modify_env()
                 self.mod_env.update(self.env)
             self.exit_code += pkg.exit_code
@@ -1230,7 +1421,7 @@ class Pipeline(Pkg):
             self.log(f'[RUN] {pkg.pkg_id}: Stop', color=Color.GREEN)
             start = time.time()
             if isinstance(pkg, Service):
-                pkg.update_env(self.env, self.mod_env)
+                pkg.update_env(self.env)
                 pkg.stop()
             end = time.time()
             pkg.stop_time = end - start
@@ -1247,7 +1438,7 @@ class Pipeline(Pkg):
         for pkg in reversed(self.sub_pkgs):
             self.log(f'[RUN] {pkg.pkg_id}: Killing', color=Color.GREEN)
             if isinstance(pkg, Service):
-                pkg.update_env(self.env, self.mod_env)
+                pkg.update_env(self.env)
                 if hasattr(pkg, 'kill'):
                     pkg.kill()
                 else:
@@ -1268,7 +1459,7 @@ class Pipeline(Pkg):
             else:
                 self.log(f'[RUN] {pkg.pkg_id}: Cleaning', color=Color.GREEN)
             if isinstance(pkg, Service):
-                pkg.update_env(self.env, self.mod_env)
+                pkg.update_env(self.env)
                 pkg.clean()
             self.log(f'[RUN] {pkg.pkg_id}: Finished cleaning',
                      color=Color.GREEN)
@@ -1287,7 +1478,7 @@ class Pipeline(Pkg):
             self.log(f'[RUN] {pkg.pkg_id}: Getting status', color=Color.GREEN)
             status = None
             if isinstance(pkg, Service):
-                pkg.update_env(self.env, self.mod_env)
+                pkg.update_env(self.env)
                 status = pkg.status()
                 statuses.append(status)
             self.log(f'[RUN] {pkg.pkg_id}: Status was {status}',
