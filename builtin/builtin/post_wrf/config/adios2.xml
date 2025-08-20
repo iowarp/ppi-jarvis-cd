@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<adios-config>
+
+  <!-- <io name="/Path/to/wrfout_d01_2018-06-17_00:00:00"> -->
+  <io name="##wrfout_d01_2019-11-26_12:00:00##">
+
+
+    <engine type="##EngineType##">
+      <parameter key="RendezvousReaderCount" value="0"/>
+      <parameter key="QueueLimit" value="1"/>
+      <parameter key="QueueFullPolicy" value="Discard"/>
+      <parameter key="OpenTimeoutSecs" value="30.0"/>
+    </engine>
+
+
+  </io>
+</adios-config>

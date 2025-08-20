@@ -1,0 +1,20 @@
+name: incompact3D
+env: incompact3D_env
+pkgs:
+  - pkg_type: incompact3d
+    pkg_name: InCompact3D
+    db_path: benchmark_metadata.db
+    dbg_port: 4000
+    do_dbg: False
+    engine: bp5
+    incompact3D_location: /path/to/incompact3D
+    hide_output: False
+    nprocs: 1
+    ppn: 16
+    reinit: False
+    sleep: 0
+    stderr: None
+    stdout: None
+
+
+

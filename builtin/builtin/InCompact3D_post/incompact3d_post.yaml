@@ -1,0 +1,21 @@
+name: InCompact3D_post
+env: InCompact3D_post_env
+pkgs:
+  - pkg_type: InCompact3D_post
+    pkg_name: InCompact3D_post
+    db_path: benchmark_metadata.db
+    dbg_port: 4000
+    do_dbg: False
+    engine: bp5
+    in_filename: /path/to/data.bp5
+    out_filename: /path/to/output.bp5
+    hide_output: False
+    nprocs: 1
+    ppn: 16
+    reinit: False
+    sleep: 0
+    stderr: None
+    stdout: None
+
+
+
