@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+Install Jarvis-CD builtin packages to ~/.jarvis/builtin
+This script can be run after installing jarvis-cd to set up the builtin packages.
+"""
+
+import os
+import sys
+import shutil
+from pathlib import Path
+
+
+def install_builtin_packages():
+    """Install the builtin directory to ~/.jarvis"""
+    print("Installing Jarvis-CD builtin packages to ~/.jarvis...")
+    
+    # Look for builtin directory in multiple locations
+    builtin_paths = []
+    
+    # 1. Development install - relative to this script
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    builtin_paths.append(os.path.join(os.path.dirname(script_dir), 'builtin'))
+    
+    # 2. Try to find it relative to the jarvis_cd module
+    try:
+        import jarvis_cd
+        jarvis_cd_path = os.path.dirname(jarvis_cd.__file__)
+        # Check if builtin is a sibling directory to jarvis_cd
+        builtin_paths.append(os.path.join(os.path.dirname(jarvis_cd_path), 'builtin'))
+        # Check if builtin is in the same directory as jarvis_cd (installed as package)
+        builtin_paths.append(os.path.join(jarvis_cd_path, '..', 'builtin'))
+    except ImportError:
+        pass
+    
+    # 3. Try using importlib to find installed packages
+    try:
+        import importlib.util
+        import importlib.metadata
+        
+        # Get the installation location
+        dist = importlib.metadata.distribution('jarvis_cd')
+        if hasattr(dist, 'files') and dist.files:
+            # Look for builtin files in the distribution
+            for file in dist.files:
+                if 'builtin' in str(file):
+                    potential_path = os.path.join(os.path.dirname(str(file)), '..')
+                    if os.path.exists(potential_path):
+                        builtin_paths.append(potential_path)
+                        break
+    except Exception:
+        pass
+    
+    # 4. Check site-packages directory
+    try:
+        import site
+        for site_dir in site.getsitepackages():
+            builtin_paths.append(os.path.join(site_dir, 'builtin'))
+    except Exception:
+        pass
+    
+    # Find the first existing builtin directory
+    local_builtin_path = None
+    for path in builtin_paths:
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            local_builtin_path = abs_path
+            break
+            
+    if not local_builtin_path:
+        print("Error: Could not find builtin directory")
+        print("Searched paths:")
+        for path in builtin_paths:
+            print(f"  {os.path.abspath(path)}")
+        return False
+    
+    install_builtin_path = os.path.join(Path.home(), '.jarvis', 'builtin')
+    
+    print(f"Source: {local_builtin_path}")
+    print(f"Target: {install_builtin_path}")
+    
+    # Create ~/.jarvis directory if it doesn't exist
+    jarvis_dir = os.path.join(Path.home(), '.jarvis')
+    if not os.path.exists(jarvis_dir):
+        os.makedirs(jarvis_dir)
+        print(f"Created directory: {jarvis_dir}")
+    
+    # Copy builtin directory
+    if os.path.exists(install_builtin_path):
+        print(f"Removing existing builtin directory: {install_builtin_path}")
+        shutil.rmtree(install_builtin_path)
+    
+    shutil.copytree(local_builtin_path, install_builtin_path)
+    print(f"Successfully installed builtin packages to: {install_builtin_path}")
+    
+    # Count installed packages
+    builtin_builtin = os.path.join(install_builtin_path, 'builtin')
+    if os.path.exists(builtin_builtin):
+        packages = [d for d in os.listdir(builtin_builtin) 
+                   if os.path.isdir(os.path.join(builtin_builtin, d)) and d != '__pycache__']
+        print(f"Installed {len(packages)} builtin packages")
+    
+    return True
+
+
+def main():
+    """Main entry point"""
+    if len(sys.argv) > 1 and sys.argv[1] in ['--help', '-h']:
+        print(__doc__)
+        print()
+        print("Usage: jarvis-install-builtin")
+        print("       jarvis-install-builtin --help")
+        return
+    
+    try:
+        success = install_builtin_packages()
+        if success:
+            print()
+            print("Builtin packages installed successfully!")
+            print("You can now use 'jarvis init' to initialize your Jarvis configuration.")
+        else:
+            sys.exit(1)
+    except Exception as e:
+        print(f"Error installing builtin packages: {e}")
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
