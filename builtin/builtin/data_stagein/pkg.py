@@ -3,7 +3,7 @@ This module provides classes and methods to launch the DataStagein application.
 DataStagein is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo
 import os
 import pathlib
 import time
@@ -165,7 +165,7 @@ class DataStagein(Application):
             # Move data to destination path
             cmd = f"cp -r {data_path} {dest_data_path}"
             print(f"Copying data from {data_path} to {dest_data_path}")
-            Exec(cmd,LocalExecInfo(env=self.mod_env,))
+            Exec(cmd,LocalExecInfo(env=self.mod_env,)).run()
             
             copied_items = 1
             if os.path.isdir(data_path): copied_items = len(os.listdir(data_path))

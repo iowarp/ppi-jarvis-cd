@@ -7,6 +7,7 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from jarvis_cd.core.config import Jarvis
 
 
 class Pkg:
@@ -28,7 +29,7 @@ class Pkg:
         self.config = {}
         self.global_id = None
         self.pkg_id = None
-        self.jarvis = None
+        self.jarvis = Jarvis.get_instance()
         
         # Call user-defined initialization
         self._init()

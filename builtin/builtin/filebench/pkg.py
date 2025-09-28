@@ -3,7 +3,8 @@ This module provides classes and methods to launch Redis.
 Redis cluster is used if the hostfile has many hosts
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, PsshExecInfo
+from jarvis_cd.shell.process import Kill, Rm
 
 
 class Filebench(Application):
@@ -88,7 +89,7 @@ class Filebench(Application):
              PsshExecInfo(env=self.mod_env,
                           hostfile=self.jarvis.hostfile,
                           do_dbg=self.config['do_dbg'],
-                          dbg_port=self.config['dbg_port']))
+                          dbg_port=self.config['dbg_port'])).run()
 
     def stop(self):
         """
@@ -99,7 +100,7 @@ class Filebench(Application):
         """
         Kill('filebench',
              PsshExecInfo(env=self.env,
-                          hostfile=self.jarvis.hostfile))
+                          hostfile=self.jarvis.hostfile)).run()
 
     def clean(self):
         """
@@ -110,4 +111,4 @@ class Filebench(Application):
         """
         Rm(self.config['dir'] + '*',
            PsshExecInfo(env=self.env,
-                        hostfile=self.jarvis.hostfile))
+                        hostfile=self.jarvis.hostfile)).run()

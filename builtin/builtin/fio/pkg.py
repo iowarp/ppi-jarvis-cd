@@ -3,7 +3,10 @@ This module provides classes and methods to launch the Ior application.
 Ior is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo
+from jarvis_cd.shell.process import Rm
+import os
+import pathlib
 
 
 class Fio(Application):
@@ -159,7 +162,7 @@ class Fio(Application):
              LocalExecInfo(env=self.mod_env,
                          hostfile=self.jarvis.hostfile,
                          do_dbg=self.config['do_dbg'],
-                         dbg_port=self.config['dbg_port']))
+                         dbg_port=self.config['dbg_port'])).run()
         
     def stop(self):
         """
@@ -178,7 +181,7 @@ class Fio(Application):
         :return: None
         """
         Rm(self.config['out'] + '*',
-           LocalExecInfo())
+           LocalExecInfo()).run()
 
     def _get_stat(self, stat_dict):
         """

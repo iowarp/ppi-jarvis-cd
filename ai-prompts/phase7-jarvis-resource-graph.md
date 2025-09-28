@@ -22,7 +22,7 @@ jarvis rg build
 Using the current hostfile (set by ``jarvis hostfile set``), it will collect the set of storage devices on each node in the hostfile and then produce a view of common storages between the nodes.
 They are required to have the same mount point.
 
-You also should run a benchmark for 25 seconds on each storage device to get the initial performance profile of the storage devices. Run the profiles on separate threads.
+You also should run a benchmark for 25 seconds on each storage device to get the initial performance profile of the storage devices. Run the profiles on separate threads. Collect 4KB randwrite bandwidht and 1MB seqwrite bandwidth.
 
 ## Storage configuration
 

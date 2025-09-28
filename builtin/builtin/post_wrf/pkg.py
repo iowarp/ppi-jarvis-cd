@@ -3,7 +3,7 @@ This module provides classes and methods to launch the PostWrf application.
 PostWrf is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, MpiExecInfo
 
 
 class PostWrf(Application):
@@ -81,7 +81,7 @@ class PostWrf(Application):
                          ppn=self.config['ppn'],
                          hostfile=self.jarvis.hostfile,
                          env=self.mod_env,
-                         cwd=self.config['wrf_output']))
+                         cwd=self.config['wrf_output'])).run()
         pass
 
     def stop(self):

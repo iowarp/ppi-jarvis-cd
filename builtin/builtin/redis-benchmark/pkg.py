@@ -3,7 +3,7 @@ This module provides classes and methods to launch the Redis benchmark tool.
 Redis cluster is used if the hostfile has many hosts
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo
 
 
 class RedisBenchmark(Application):
@@ -134,7 +134,7 @@ class RedisBenchmark(Application):
              LocalExecInfo(env=self.mod_env,
                            hostfile=hostfile,
                            do_dbg=self.config['do_dbg'],
-                           dbg_port=self.config['dbg_port']))
+                           dbg_port=self.config['dbg_port'])).run()
 
     def stop(self):
         """
@@ -158,9 +158,9 @@ class RedisBenchmark(Application):
                  LocalExecInfo(env=self.mod_env,
                                hostfile=hostfile,
                                do_dbg=self.config['do_dbg'],
-                               dbg_port=self.config['dbg_port']))
+                               dbg_port=self.config['dbg_port'])).run()
             Exec(f'redis-cli -p {self.config["port"]} -h {host} cluster reset',
                  LocalExecInfo(env=self.mod_env,
                                hostfile=hostfile,
                                do_dbg=self.config['do_dbg'],
-                               dbg_port=self.config['dbg_port']))
+                               dbg_port=self.config['dbg_port'])).run()

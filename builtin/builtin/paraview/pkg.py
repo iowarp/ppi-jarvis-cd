@@ -3,7 +3,7 @@ This module provides classes and methods to launch the Paraview application.
 Paraview is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, MpiExecInfo
 
 
 class Paraview(Application):
@@ -85,7 +85,7 @@ class Paraview(Application):
              MpiExecInfo(nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'],
                          env=self.mod_env
-                        ))
+                        )).run()
 
         pass
 

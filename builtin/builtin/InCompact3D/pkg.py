@@ -3,7 +3,8 @@ This module provides classes and methods to launch the Incompact3d application.
 Incompact3d is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, MpiExecInfo, PsshExecInfo
+from jarvis_cd.shell.process import Rm
 import os
 
 class Incompact3d(Application):
@@ -138,7 +139,7 @@ class Incompact3d(Application):
                          hostfile=self.jarvis.hostfile,
                          env=self.mod_env,
                          cwd=execute_location
-                         ))
+                         )).run()
         pass
 
     def stop(self):
@@ -164,5 +165,5 @@ class Incompact3d(Application):
                        ]
 
         print(f'Removing {output_files}')
-        Rm(output_files, PsshExecInfo(hostfile=self.jarvis.hostfile))
+        Rm(output_files, PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
         pass

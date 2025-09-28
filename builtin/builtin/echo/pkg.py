@@ -3,7 +3,6 @@ This module provides classes and methods to launch the Echo application.
 Echo is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
 
 
 class Echo(Application):

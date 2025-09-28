@@ -2,8 +2,9 @@
 This module provides classes and methods to launch Redis.
 Redis cluster is used if the hostfile has many hosts
 """
-from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.basic.pkg import Application, Color
+from jarvis_cd.shell import Exec, LocalExecInfo, PsshExecInfo
+from jarvis_cd.shell.process import Kill
 
 
 class Redis(Application):
@@ -80,7 +81,7 @@ class Redis(Application):
                           hostfile=hostfile,
                           do_dbg=self.config['do_dbg'],
                           dbg_port=self.config['dbg_port'],
-                          exec_async=True))
+                          exec_async=True)).run()
         self.log(f'Sleeping for {self.config["sleep"]} seconds', color=Color.YELLOW)
         time.sleep(self.config['sleep'])
 
@@ -92,12 +93,12 @@ class Redis(Application):
                      LocalExecInfo(env=self.mod_env,
                                    hostfile=hostfile,
                                    do_dbg=self.config['do_dbg'],
-                                   dbg_port=self.config['dbg_port']))
+                                   dbg_port=self.config['dbg_port'])).run()
                 Exec(f'redis-cli -p {self.config["port"]} -h {host} cluster reset',
                      LocalExecInfo(env=self.mod_env,
                                    hostfile=hostfile,
                                    do_dbg=self.config['do_dbg'],
-                                   dbg_port=self.config['dbg_port']))
+                                   dbg_port=self.config['dbg_port'])).run()
 
             self.log('Creating the cluster', color=Color.YELLOW)
             cmd = [
@@ -112,7 +113,7 @@ class Redis(Application):
                  LocalExecInfo(env=self.mod_env,
                                hostfile=hostfile,
                                do_dbg=self.config['do_dbg'],
-                               dbg_port=self.config['dbg_port']))
+                               dbg_port=self.config['dbg_port'])).run()
             self.log(f'Sleeping for {self.config["sleep"]} seconds', color=Color.YELLOW)
             time.sleep(self.config['sleep'])
 
@@ -126,7 +127,7 @@ class Redis(Application):
         for i in range(3):
             Kill('redis-server',
                  PsshExecInfo(env=self.env,
-                              hostfile=self.jarvis.hostfile))
+                              hostfile=self.jarvis.hostfile)).run()
 
     def clean(self):
         """

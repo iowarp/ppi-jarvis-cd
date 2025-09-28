@@ -3,7 +3,7 @@ This module provides classes and methods to launch the Gray Scott application.
 Pyflextrkr is ....
 """
 from jarvis_cd.basic.pkg import Application, Color
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo
 import time
 import pathlib
 
@@ -246,7 +246,7 @@ class Pyflextrkr(Application):
         cmd.append(self.config['conda_env'])
         
         cmd = ' '.join(cmd)
-        Exec(cmd, LocalExecInfo(env=self.mod_env,))
+        Exec(cmd, LocalExecInfo(env=self.mod_env,)).run()
         self.log(f"Pyflextrkr _unset_vfd_vars: {cmd}")
 
     def _set_env_vars(self, env_vars_toset):
@@ -265,7 +265,7 @@ class Pyflextrkr(Application):
         cmd.append(self.config['conda_env'])
         cmd = ' '.join(cmd)
         self.log(f"Pyflextrkr _set_env_vars: {cmd}")
-        Exec(cmd, LocalExecInfo(env=self.mod_env,))
+        Exec(cmd, LocalExecInfo(env=self.mod_env,)).run()
         
     
     def _construct_cmd(self):
@@ -353,7 +353,7 @@ class Pyflextrkr(Application):
                            dbg_port=self.config['dbg_port'],
                            pipe_stdout=self.config['stdout'],
                            pipe_stderr=self.config['stderr'],
-                           ))
+                           )).run()
         
         end = time.time()
         diff = end - start
@@ -377,7 +377,7 @@ class Pyflextrkr(Application):
         :return: None
         """
         cmd = ['killall', '-9', 'python']
-        Exec(' '.join(cmd), LocalExecInfo(hostfile=self.jarvis.hostfile))
+        Exec(' '.join(cmd), LocalExecInfo(hostfile=self.jarvis.hostfile)).run()
 
     def clean(self):
         """
@@ -394,7 +394,7 @@ class Pyflextrkr(Application):
         
         # recursive remove all files in output_data directory
         self.log(f'Removing {output_dir}')
-        Rm(output_dir)
+        Rm(output_dir).run()
         
         ## Do not clear cache in script, clear cache manually
         # # Clear cache

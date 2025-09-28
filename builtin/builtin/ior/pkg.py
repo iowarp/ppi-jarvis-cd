@@ -5,8 +5,10 @@ It is a simple tool that can be used to measure the performance of a file system
 It is mainly targeted for HPC systems and parallel I/O.
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo, PsshExecInfo, Rm
+from jarvis_cd.util import Hostfile
 import os
+import pathlib
 
 
 class Ior(Application):
@@ -142,14 +144,14 @@ class Ior(Application):
             os.makedirs(out, exist_ok=True)
         # pipe_stdout=self.config['log']
         Exec('which mpiexec',
-             LocalExecInfo(env=self.mod_env))
+             LocalExecInfo(env=self.mod_env)).run() 
         Exec(' '.join(cmd),
              MpiExecInfo(env=self.mod_env,
                          hostfile=self.jarvis.hostfile,
                          nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'],
                          do_dbg=self.config['do_dbg'],
-                         dbg_port=self.config['dbg_port']))
+                         dbg_port=self.config['dbg_port'])).run()
 
     def stop(self):
         """
@@ -169,7 +171,7 @@ class Ior(Application):
         """
         Rm(self.config['out'] + '*',
            PsshExecInfo(env=self.env,
-                        hostfile=self.jarvis.hostfile))
+                        hostfile=self.jarvis.hostfile)).run()
 
     def _get_stat(self, stat_dict):
         """

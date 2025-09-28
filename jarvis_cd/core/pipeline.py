@@ -1,8 +1,10 @@
 import os
 import yaml
+import copy
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from jarvis_cd.core.config import JarvisConfig, load_class, Jarvis
+from jarvis_cd.util.logger import logger
 
 
 class PipelineManager:
@@ -286,7 +288,7 @@ class PipelineManager:
         """Run the current pipeline (start all packages, then stop them)"""
         try:
             self.start_pipeline()
-            print("Pipeline started successfully. Stopping packages...")
+            logger.pipeline("Pipeline started successfully. Stopping packages...")
             self.stop_pipeline()
         except Exception as e:
             print(f"Error during pipeline run: {e}")
@@ -307,18 +309,24 @@ class PipelineManager:
         with open(config_file, 'r') as f:
             pipeline_config = yaml.safe_load(f)
             
-        print(f"Starting pipeline: {pipeline_config['name']}")
+        logger.pipeline(f"Starting pipeline: {pipeline_config['name']}")
         
-        # Load and start each package
+        # Load pipeline environment
+        pipeline_env = self._load_pipeline_environment(current_pipeline_dir)
+        
+        # Load and start each package with environment propagation
         for pkg_def in pipeline_config['packages']:
             try:
-                print(f"Starting package: {pkg_def['pkg_id']}")
-                pkg_instance = self._load_package_instance(pkg_def)
+                logger.package(f"Starting package: {pkg_def['pkg_id']}")
+                pkg_instance = self._load_package_instance(pkg_def, pipeline_env)
                 
                 if hasattr(pkg_instance, 'start'):
                     pkg_instance.start()
                 else:
                     print(f"Package {pkg_def['pkg_id']} has no start method")
+                    
+                # Propagate environment changes to next packages
+                pipeline_env.update(pkg_instance.env)
                     
             except Exception as e:
                 print(f"Error starting package {pkg_def['pkg_id']}: {e}")
@@ -334,13 +342,16 @@ class PipelineManager:
         with open(config_file, 'r') as f:
             pipeline_config = yaml.safe_load(f)
             
-        print(f"Stopping pipeline: {pipeline_config['name']}")
+        logger.pipeline(f"Stopping pipeline: {pipeline_config['name']}")
+        
+        # Load pipeline environment
+        pipeline_env = self._load_pipeline_environment(current_pipeline_dir)
         
         # Stop each package in reverse order
         for pkg_def in reversed(pipeline_config['packages']):
             try:
-                print(f"Stopping package: {pkg_def['pkg_id']}")
-                pkg_instance = self._load_package_instance(pkg_def)
+                logger.package(f"Stopping package: {pkg_def['pkg_id']}")
+                pkg_instance = self._load_package_instance(pkg_def, pipeline_env)
                 
                 if hasattr(pkg_instance, 'stop'):
                     pkg_instance.stop()
@@ -361,13 +372,16 @@ class PipelineManager:
         with open(config_file, 'r') as f:
             pipeline_config = yaml.safe_load(f)
             
-        print(f"Killing pipeline: {pipeline_config['name']}")
+        logger.pipeline(f"Killing pipeline: {pipeline_config['name']}")
+        
+        # Load pipeline environment
+        pipeline_env = self._load_pipeline_environment(current_pipeline_dir)
         
         # Kill each package
         for pkg_def in pipeline_config['packages']:
             try:
-                print(f"Killing package: {pkg_def['pkg_id']}")
-                pkg_instance = self._load_package_instance(pkg_def)
+                logger.package(f"Killing package: {pkg_def['pkg_id']}")
+                pkg_instance = self._load_package_instance(pkg_def, pipeline_env)
                 
                 if hasattr(pkg_instance, 'kill'):
                     pkg_instance.kill()
@@ -388,13 +402,16 @@ class PipelineManager:
         with open(config_file, 'r') as f:
             pipeline_config = yaml.safe_load(f)
             
-        print(f"Cleaning pipeline: {pipeline_config['name']}")
+        logger.pipeline(f"Cleaning pipeline: {pipeline_config['name']}")
+        
+        # Load pipeline environment
+        pipeline_env = self._load_pipeline_environment(current_pipeline_dir)
         
         # Clean each package
         for pkg_def in pipeline_config['packages']:
             try:
-                print(f"Cleaning package: {pkg_def['pkg_id']}")
-                pkg_instance = self._load_package_instance(pkg_def)
+                logger.package(f"Cleaning package: {pkg_def['pkg_id']}")
+                pkg_instance = self._load_package_instance(pkg_def, pipeline_env)
                 
                 if hasattr(pkg_instance, 'clean'):
                     pkg_instance.clean()
@@ -420,9 +437,12 @@ class PipelineManager:
         print(f"Directory: {current_pipeline_dir}")
         print("Packages:")
         
+        # Load pipeline environment
+        pipeline_env = self._load_pipeline_environment(current_pipeline_dir)
+        
         for pkg_def in pipeline_config['packages']:
             try:
-                pkg_instance = self._load_package_instance(pkg_def)
+                pkg_instance = self._load_package_instance(pkg_def, pipeline_env)
                 
                 if hasattr(pkg_instance, 'status'):
                     status = pkg_instance.status()
@@ -433,7 +453,34 @@ class PipelineManager:
             except Exception as e:
                 print(f"  {pkg_def['pkg_id']}: error ({e})")
                 
-    def _load_package_instance(self, pkg_def: Dict[str, Any]):
+    def _load_pipeline_environment(self, pipeline_dir: Path) -> Dict[str, str]:
+        """
+        Load the pipeline environment from pipeline configuration and env.yaml.
+        
+        :param pipeline_dir: Path to the pipeline directory
+        :return: Dictionary of environment variables
+        """
+        env = {}
+        
+        # Load from pipeline configuration
+        config_file = pipeline_dir / 'pipeline.yaml'
+        if config_file.exists():
+            with open(config_file, 'r') as f:
+                pipeline_config = yaml.safe_load(f)
+                if pipeline_config and 'env' in pipeline_config:
+                    env.update(pipeline_config['env'])
+        
+        # Load from environment file (this is the main source of environment)
+        env_file = pipeline_dir / 'env.yaml'
+        if env_file.exists():
+            with open(env_file, 'r') as f:
+                env_config = yaml.safe_load(f)
+                if env_config:
+                    env.update(env_config)
+        
+        return env
+        
+    def _load_package_instance(self, pkg_def: Dict[str, Any], pipeline_env: Optional[Dict[str, str]] = None):
         """
         Load a package instance from package definition.
         
@@ -474,7 +521,7 @@ class PipelineManager:
             if not repo_path:
                 raise ValueError(f"Repository not found: {repo_name}")
                 
-        import_str = f"{repo_name}.{pkg_name}.package"
+        import_str = f"{repo_name}.{pkg_name}.pkg"
         pkg_class = load_class(import_str, repo_path, class_name)
         
         if not pkg_class:
@@ -500,6 +547,23 @@ class PipelineManager:
         # Set jarvis singleton for package access
         if hasattr(pkg_instance, 'jarvis'):
             pkg_instance.jarvis = Jarvis.get_instance()
+            
+        # Set up environment variables
+        if pipeline_env is None:
+            pipeline_env = {}
+            
+        # Set env (shared across pipeline) and mod_env (package-specific copy)
+        if hasattr(pkg_instance, 'env'):
+            pkg_instance.env = pipeline_env.copy()
+        if hasattr(pkg_instance, 'mod_env'):
+            pkg_instance.mod_env = copy.deepcopy(pipeline_env)
+            
+        # Configure the package to set up its environment
+        if hasattr(pkg_instance, 'configure') and pkg_instance.config:
+            try:
+                pkg_instance.configure(**pkg_instance.config)
+            except Exception as e:
+                print(f"Warning: Error configuring package {pkg_instance.pkg_id}: {e}")
             
         return pkg_instance
         

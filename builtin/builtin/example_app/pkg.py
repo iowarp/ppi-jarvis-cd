@@ -3,8 +3,7 @@ Example Application package for testing interceptors
 """
 
 from jarvis_cd.basic.pkg import Application
-from jarvis_util.shell.local_exec import LocalExecInfo
-from jarvis_util.shell.exec import Exec
+from jarvis_cd.shell import Exec, LocalExecInfo
 import os
 
 
@@ -76,7 +75,7 @@ echo "ExampleApp finished successfully"
             hide_output=self.config['hide_output']
         )
         
-        self.exec = Exec(cmd, exec_info)
+        self.exec = Exec(cmd, exec_info).run()
         self.exit_code = self.exec.exit_code
 
     def stop(self):

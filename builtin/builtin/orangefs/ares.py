@@ -1,4 +1,4 @@
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo
 from .custom_kern import OrangefsCustomKern
 
 

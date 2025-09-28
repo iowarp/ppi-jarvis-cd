@@ -3,7 +3,8 @@ This module provides classes and methods to launch the Lammps application.
 Lammps is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, MpiExecInfo, PsshExecInfo
+from jarvis_cd.shell.process import Rm
 
 
 class Lammps(Application):
@@ -67,16 +68,16 @@ class Lammps(Application):
         :param kwargs: Configuration parameters for this pkg.
         :return: None
         """
-       if self.config['engine'].lower() == 'bp4':
-          self.copy_template_file(f'{self.pkg_dir}/config/adios2.xml',
-                                  f'{self.config["script_location"]}/adios_config.xml')
-       elif  self.config['engine'].lower == 'hermes':
-           replacement = [("ppn", self.config['ppn']), ("DB_FIEL", self.config['db_file'])]
-           self.copy_template_file(f'{self.pkg_dir}/config/hermes.xml',
-                                   f'{self.config["script_location"]}/adios_config.xml', replacement)
-       else:
-           raise Exception('Engine not defined')
-       self.update_config(kwargs, rebuild=False)
+        if self.config['engine'].lower() == 'bp4':
+            self.copy_template_file(f'{self.pkg_dir}/config/adios2.xml',
+                                    f'{self.config["script_location"]}/adios_config.xml')
+        elif  self.config['engine'].lower == 'hermes':
+            replacement = [("ppn", self.config['ppn']), ("DB_FIEL", self.config['db_file'])]
+            self.copy_template_file(f'{self.pkg_dir}/config/hermes.xml',
+                                    f'{self.config["script_location"]}/adios_config.xml', replacement)
+        else:
+            raise Exception('Engine not defined')
+        self.update_config(kwargs, rebuild=False)
 
     def start(self):
         """
@@ -90,7 +91,7 @@ class Lammps(Application):
                          ppn=self.config['ppn'],
                          hostfile=self.jarvis.hostfile,
                          env=self.mod_env,
-                         cwd=self.config['script_location']))
+                         cwd=self.config['script_location'])).run()
         pass
 
     def stop(self):
@@ -111,5 +112,5 @@ class Lammps(Application):
         """
 
         output_file = [self.config['db_path']]
-        Rm(output_file, PsshExecInfo(hostfile=self.jarvis.hostfile))
+        Rm(output_file, PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
         pass

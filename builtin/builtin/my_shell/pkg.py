@@ -3,7 +3,7 @@ This module provides classes and methods to launch the MyShell application.
 MyShell is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo
 
 
 class MyShell(Application):
@@ -58,7 +58,7 @@ class MyShell(Application):
         if self.config['script']:
             cmd.append(self.config['script'])
         # pipe_stdout=self.config['log']
-        Exec(' '.join(cmd))
+        Exec(' '.join(cmd), LocalExecInfo()).run()
 
     def stop(self):
         """

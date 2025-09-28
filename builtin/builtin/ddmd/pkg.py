@@ -3,7 +3,8 @@ This module provides classes and methods to launch the Ddmd application.
 Ddmd is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo, PsshExecInfo
+from jarvis_cd.shell.process import Kill, Rm
 import os
 import yaml
 import time
@@ -261,7 +262,7 @@ class Ddmd(Application):
             print(f"{conda_cmd} > {logfile}")
             cur_task = Exec(conda_cmd, LocalExecInfo(env=self.mod_env,
                                           pipe_stdout=logfile,
-                                          exec_async=True))
+                                          exec_async=True)).run()
             
             all_tasks.append(cur_task)
         
@@ -321,7 +322,7 @@ class Ddmd(Application):
             print(F"Running Aggregate on {node_name}: {dest_path}")
             print(f"{conda_cmd} > {logfile}")
             Exec(conda_cmd, LocalExecInfo(env=self.mod_env,
-                                        pipe_stdout=logfile))
+                                        pipe_stdout=logfile)).run()
     
     
     def _run_train(self):
@@ -352,7 +353,7 @@ class Ddmd(Application):
         ]
         cp_cmd = ' '.join(cp_cmd)
         print(f"Copying {model_tag}.json to {model_select_path}")
-        Exec(cp_cmd, LocalExecInfo(env=self.mod_env))
+        Exec(cp_cmd, LocalExecInfo(env=self.mod_env)).run()
         
         self.prev_model_json = f'{model_select_path}/{model_tag}.json'
         
@@ -391,7 +392,7 @@ class Ddmd(Application):
                 print(f"{conda_cmd} > {logfile}")
                 curr_task = Exec(conda_cmd, LocalExecInfo(env=self.mod_env,
                                             pipe_stdout=logfile,
-                                            exec_async=True))
+                                            exec_async=True)).run()
                 return curr_task
         except Exception as e:
             print("ERROR: " + str(e))
@@ -489,7 +490,7 @@ class Ddmd(Application):
                 print(F"Running Inference on {node_name}: {dest_path}")
                 print(f"{conda_cmd} > {logfile}")
                 curr_task = Exec(conda_cmd, LocalExecInfo(env=self.mod_env,
-                                            pipe_stdout=logfile))
+                                            pipe_stdout=logfile)).run()
                 return curr_task
         except Exception as e:
             print("ERROR: " + str(e))
@@ -532,7 +533,7 @@ class Ddmd(Application):
             cmd.append(cenv)
             
             cmd = ' '.join(cmd)
-            Exec(cmd, LocalExecInfo(env=self.mod_env,))
+            Exec(cmd, LocalExecInfo(env=self.mod_env,)).run()
             self.log(f"DDMD _unset_vfd_vars for {cenv}: {cmd}")
 
     def _set_env_vars(self, env_vars_toset):
@@ -553,7 +554,7 @@ class Ddmd(Application):
             cmd.append(cenv)
             cmd = ' '.join(cmd)
             self.log(f"DDMD _set_env_vars for {cenv}: {cmd}")
-            Exec(cmd, LocalExecInfo(env=self.mod_env,))
+            Exec(cmd, LocalExecInfo(env=self.mod_env,)).run()
         
 
     def start(self):
@@ -643,7 +644,7 @@ class Ddmd(Application):
         print("INFO: killing all python processes")
         Kill('python',
              PsshExecInfo(hostfile=self.jarvis.hostfile,
-                          env=self.env))
+                          env=self.env)).run()
         
     def stop(self):
         """
@@ -673,9 +674,9 @@ class Ddmd(Application):
                 if rp != "molecular_dynamics_runs":
                     remove_path = self.config['experiment_path'] + "/" + rp
                     print("INFO: removing " + remove_path)
-                    Rm(remove_path)
+                    Rm(remove_path).run()
         else:
             for rp in remove_paths:
                 remove_path = self.config['experiment_path'] + "/" + rp
                 print("INFO: removing " + remove_path)
-                Rm(remove_path)
+                Rm(remove_path).run()

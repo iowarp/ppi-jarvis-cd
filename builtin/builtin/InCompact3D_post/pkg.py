@@ -3,7 +3,7 @@ This module provides classes and methods to launch the Incompact3dPost applicati
 Incompact3dPost is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec
 
 
 class Incompact3dPost(Application):
@@ -128,7 +128,7 @@ class Incompact3dPost(Application):
         #                  cwd=execute_location
         #                  ))
         os.chdir(execute_location)
-        Exec(f'inCompact3D_analysis {in_file} {out_file}')
+        Exec(f'inCompact3D_analysis {in_file} {out_file}').run()
         pass
 
     def stop(self):
@@ -152,5 +152,5 @@ class Incompact3dPost(Application):
                       self.config['db_path']
                       ]
         print(f'Removing {output_dir}')
-        Rm(output_dir, PsshExecInfo(hostfile=self.jarvis.hostfile))
+        Rm(output_dir, PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
         pass

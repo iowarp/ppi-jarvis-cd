@@ -230,13 +230,19 @@ class JarvisConfig:
         
     def get_builtin_repo_path(self) -> Path:
         """Get path to builtin repository"""
-        # First check if builtin repo is installed to ~/.jarvis/builtin
+        # First check if builtin repo is registered in repos
+        for repo_path_str in self.repos['repos']:
+            repo_path = Path(repo_path_str)
+            if repo_path.name == 'builtin' and repo_path.exists():
+                return repo_path
+        
+        # Fall back to builtin repo installed to ~/.jarvis/builtin
         user_builtin = self.jarvis_root / 'builtin'
         if user_builtin.exists():
             return user_builtin
             
         # Fall back to builtin repo in the same directory as this file (development)
-        dev_builtin = Path(__file__).parent.parent / 'builtin'
+        dev_builtin = Path(__file__).parent.parent.parent / 'builtin'
         if dev_builtin.exists():
             return dev_builtin
             

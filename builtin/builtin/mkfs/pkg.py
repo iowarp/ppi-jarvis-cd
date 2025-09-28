@@ -2,7 +2,8 @@
 This module provides classes and methods to create XFS or EXT4 filesystems.
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo
+from jarvis_cd.shell.process import Mkdir
 import os
 
 
@@ -97,7 +98,7 @@ class Mkfs(Application):
             # Create mount point if it doesn't exist
             Mkdir(self.config['mount_point'],
                   LocalExecInfo(env=self.env,
-                               sudo=True))
+                               sudo=True)).run()
 
             # Mount the filesystem
             Mount(self.config['device'],

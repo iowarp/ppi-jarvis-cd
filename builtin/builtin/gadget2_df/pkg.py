@@ -3,7 +3,8 @@ This module provides classes and methods to launch the Gadget2Df application.
 Gadget2Df is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo
+from jarvis_cd.shell.process import Mkdir, Rm
 
 
 class Gadget2Df(Application):
@@ -84,7 +85,7 @@ class Gadget2Df(Application):
                                 })
         build_dir = f'{self.shared_dir}/build'
         cmake_opts = {}
-        Mkdir(f'{self.env["GADGET2_PATH"]}/ICs-NGen')
+        Mkdir(f'{self.env["GADGET2_PATH"]}/ICs-NGen').run()
         if 'FFTW_PATH' in self.env:
             cmake_opts['FFTW_PATH'] = self.env['FFTW_PATH']
         Cmake(self.env['GADGET2_PATH'],
@@ -110,7 +111,7 @@ class Gadget2Df(Application):
                          ppn=self.config['ppn'],
                          hostfile=self.jarvis.hostfile,
                          env=self.mod_env,
-                         cwd=ngenic_root))
+                         cwd=ngenic_root)).run()
 
     def stop(self):
         """
@@ -130,4 +131,4 @@ class Gadget2Df(Application):
         """
         ics_path = f'{self.env["GADGET2_PATH"]}/ICs-NGen/{self.config["ic"]}.*'
         print(ics_path)
-        Rm(ics_path)
+        Rm(ics_path).run()

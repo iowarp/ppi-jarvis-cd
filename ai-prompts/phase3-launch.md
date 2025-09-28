@@ -303,7 +303,7 @@ class OpenMpiExec(LocalMpiExec):
         if self.ppn is not None:
             params.append(f'-npernode {self.ppn}')
         if len(self.hostfile):
-            if self.hostfile.is_subset() or self.hostfile.path is None:
+            if self.hostfile.path is None:
                 params.append(f'--host {",".join(self.hostfile.hosts)}')
             else:
                 params.append(f'--hostfile {self.hostfile.path}')
@@ -336,7 +336,7 @@ class MpichExec(LocalMpiExec):
             params.append(f'-ppn {self.ppn}')
 
         if len(self.hostfile):
-            if self.hostfile.is_subset() or self.hostfile.path is None:
+            if self.hostfile.path is None:
                 params.append(f'--host {",".join(self.hostfile.hosts)}')
             else:
                 params.append(f'--hostfile {self.hostfile.path}')
@@ -371,7 +371,7 @@ class CrayMpichExec(LocalMpiExec):
         if len(self.hostfile):
             if self.hostfile.hosts[0] == 'localhost' and len(self.hostfile) == 1:
                 pass
-            elif self.hostfile.is_subset() or self.hostfile.path is None:
+            elif self.hostfile.path is None:
                 params.append(f'--hosts {",".join(self.hostfile.hosts)}')
             else:
                 params.append(f'--hostfile {self.hostfile.path}')

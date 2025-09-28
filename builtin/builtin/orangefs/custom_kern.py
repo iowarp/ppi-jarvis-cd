@@ -1,4 +1,6 @@
-from jarvis_util import *
+from jarvis_cd.basic.pkg import Color
+from jarvis_cd.shell import Exec, SshExecInfo, PsshExecInfo
+from jarvis_cd.shell.process import Kill
 
 
 class OrangefsCustomKern:

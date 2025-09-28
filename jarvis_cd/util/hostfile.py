@@ -201,6 +201,13 @@ class Hostfile:
         """Return host IPs as a separated string"""
         return sep.join(self.hosts_ip)
         
+    def is_subset(self) -> bool:
+        """
+        Return True if hostfile was created from a host list rather than a file.
+        Used to determine whether to use --host or --hostfile in MPI commands.
+        """
+        return self.path is None
+        
     def __len__(self) -> int:
         """Return number of hosts"""
         return len(self.hosts)

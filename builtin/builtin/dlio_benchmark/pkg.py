@@ -3,7 +3,8 @@ This module provides classes and methods to launch the DlioBenchmark application
 DlioBenchmark is ....
 """
 from jarvis_cd.basic.pkg import Application, Color
-from jarvis_util import *
+from jarvis_cd.shell import Exec, MpiExecInfo, PsshExecInfo
+from jarvis_cd.shell.process import Rm
 
 
 class DlioBenchmark(Application):
@@ -196,12 +197,12 @@ class DlioBenchmark(Application):
                 MpiExecInfo(env=self.mod_env,
                             hostfile=self.jarvis.hostfile,
                             nprocs=self.config['nprocs'],
-                            ppn=self.config['ppn']))
+                            ppn=self.config['ppn'])).run()
 
         # step2: clear the system cache
         Exec('sudo drop_caches',
              PsshExecInfo(env=self.env,
-                        hostfile=self.jarvis.hostfile))
+                        hostfile=self.jarvis.hostfile)).run()
         
         # step3: run the benchmark with the workload
         if self.config['tracing']:
@@ -241,7 +242,7 @@ class DlioBenchmark(Application):
              MpiExecInfo(env=self.mod_env,
                          hostfile=self.jarvis.hostfile,
                          nprocs=self.config['nprocs'],
-                         ppn=self.config['ppn']))
+                         ppn=self.config['ppn'])).run()
         
 
     def stop(self):
@@ -263,13 +264,13 @@ class DlioBenchmark(Application):
         # clear data path
         Rm(self.config['data_path'] + '*',
            PsshExecInfo(env=self.env,
-                        hostfile=self.jarvis.hostfile))
+                        hostfile=self.jarvis.hostfile)).run()
 
         self.log(f'Removing dataset {self.config['data_path']}', Color.YELLOW)
 
         # clear checkpoint
         Rm(self.config['checkpoint_path'] + '*',
            PsshExecInfo(env=self.env,
-                        hostfile=self.jarvis.hostfile))
+                        hostfile=self.jarvis.hostfile)).run()
         
         self.log(f'Removing checkpoints {self.config['checkpoint_path']}', Color.YELLOW)

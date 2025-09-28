@@ -3,7 +3,8 @@ This module provides classes and methods to inject the Darshan interceptor.
 Darshan is ....
 """
 from jarvis_cd.basic.pkg import Interceptor
-from jarvis_util import *
+from jarvis_cd.shell import PsshExecInfo
+from jarvis_cd.shell.process import Mkdir
 import os
 
 
@@ -54,7 +55,7 @@ class Darshan(Interceptor):
         if self.config['DARSHAN_LIB'] is None:
             raise Exception('Could not find darshan')
         Mkdir(self.env['DARSHAN_LOG_DIR'],
-              PsshExecInfo(hostfile=self.jarvis.hostfile))
+              PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
         print(f'Found libdarshan.so at {self.config["DARSHAN_LIB"]}')
 
     def modify_env(self):

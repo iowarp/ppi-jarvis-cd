@@ -3,7 +3,8 @@ This module provides classes and methods to launch the Cm1 application.
 Cm1 is ....
 """
 from jarvis_cd.basic.pkg import Application
-from jarvis_util import *
+from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo
+from jarvis_cd.shell.process import Mkdir
 
 
 class Cm1(Application):
@@ -104,12 +105,12 @@ class Cm1(Application):
         out_parent = str(pathlib.Path(self.config['output']).parent)
         self.config['restart'] = os.path.join(out_parent, 'restart_dir')
         Mkdir([self.config['output'], self.config['restart']],
-              LocalExecInfo())
+              LocalExecInfo()).run()
 
         # Create CM1 compilation
         self.config['CM1_PATH'] = self.env['CM1_PATH']
         Exec(f'bash {self.config["CM1_PATH"]}/buildCM1-spack.sh',
-             LocalExecInfo(env=self.env))
+             LocalExecInfo(env=self.env)).run()
 
         # Create CM1 configuration
         self.env['COREX'] = self.config['corex']
@@ -172,7 +173,7 @@ class Cm1(Application):
         Exec(cmd, MpiExecInfo(env=self.env,
                               nprocs=corex * corey,
                               ppn=self.config['ppn'],
-                              hostfile=self.jarvis.hostfile))
+                              hostfile=self.jarvis.hostfile)).run()
 
     def stop(self):
         """

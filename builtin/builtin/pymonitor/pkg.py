@@ -3,8 +3,10 @@ This module provides classes and methods to launch the Ior application.
 Ior is ....
 """
 from jarvis_cd.basic.pkg import Service
-from jarvis_util import *
-from jarvis_util.introspect.monitor import Monitor
+from jarvis_cd.shell import PsshExecInfo
+from jarvis_cd.shell.process import Mkdir, Kill, Rm
+# TODO: Monitor import needs to be resolved - not available in jarvis_cd yet
+# from jarvis_util.introspect.monitor import Monitor
 
 class Pymonitor(Service):
     """
@@ -56,7 +58,7 @@ class Pymonitor(Service):
         if self.config['dir'] is None:
             self.config['dir'] = f'{self.shared_dir}/logs'
         self.config['dir'] = os.path.expandvars(self.config['dir'])
-        Mkdir(self.config['dir'])
+        Mkdir(self.config['dir']).run()
         self.env['MONITOR_DIR'] = self.config['dir']
         self.log(f'The config dir is {self.config["dir"]}')
 
@@ -86,7 +88,7 @@ class Pymonitor(Service):
 
         :return: None
         """
-        Kill('.*pymonitor.*', PsshExecInfo(env=self.env))
+        Kill('.*pymonitor.*', PsshExecInfo(env=self.env)).run()
 
     def status(self):
         pass
@@ -98,4 +100,4 @@ class Pymonitor(Service):
 
         :return: None
         """
-        Rm(self.config['dir'])
+        Rm(self.config['dir']).run()

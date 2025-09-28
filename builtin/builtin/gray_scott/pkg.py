@@ -4,7 +4,8 @@ Gray Scott is a 3D 7-point stencil code for modeling the diffusion of two
 substances.
 """
 from jarvis_cd.basic.pkg import Application, Color
-from jarvis_util import *
+from jarvis_cd.shell import Exec, MpiExecInfo, PsshExecInfo
+from jarvis_cd.shell.process import Mkdir, Rm
 import time
 import pathlib
 
@@ -123,7 +124,7 @@ class GrayScott(Application):
             self.config['output'] = os.path.join(adios_dir,
                                                  'data')
             Mkdir(adios_dir, PsshExecInfo(hostfile=self.jarvis.hostfile,
-                                          env=self.env))
+                                          env=self.env)).run()
         settings_json = {
             'L': self.config['L'],
             'Du': self.config['Du'],
@@ -139,7 +140,7 @@ class GrayScott(Application):
         }
         Mkdir(self.config['output'],
               PsshExecInfo(hostfile=self.jarvis.hostfile,
-                           env=self.env))
+                           env=self.env)).run()
         JsonFile(self.settings_json_path).save(settings_json)
 
         if self.config['engine'].lower() == 'bp5':
@@ -164,7 +165,7 @@ class GrayScott(Application):
              MpiExecInfo(nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'],
                          hostfile=self.jarvis.hostfile,
-                         env=self.mod_env))
+                         env=self.mod_env)).run()
         end = time.time()
         diff = end - start
         self.log(f'TIME: {diff} seconds', color=Color.GREEN)
@@ -187,4 +188,4 @@ class GrayScott(Application):
         """
         output_dir = self.config['output'] + "*"
         print(f'Removing {output_dir}')
-        Rm(output_dir)
+        Rm(output_dir).run()
