@@ -275,6 +275,13 @@ class JarvisCLI(ArgParse):
                 'type': str,
                 'required': True,
                 'pos': True
+            },
+            {
+                'name': 'force',
+                'msg': 'Force overwrite if repository already exists',
+                'type': bool,
+                'default': False,
+                'aliases': ['f']
             }
         ])
         
@@ -585,7 +592,8 @@ class JarvisCLI(ArgParse):
         """Add repository"""
         self._ensure_initialized()
         repo_path = self.kwargs['repo_path']
-        self.repo_manager.add_repository(repo_path)
+        force = self.kwargs.get('force', False)
+        self.repo_manager.add_repository(repo_path, force=force)
         
     def repo_remove(self):
         """Remove repository"""

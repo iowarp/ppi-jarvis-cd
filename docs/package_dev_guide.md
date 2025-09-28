@@ -10,8 +10,9 @@ This guide explains how to develop custom packages for Jarvis-CD, including the 
 4. [Environment Variables](#environment-variables)
 5. [Configuration](#configuration)
 6. [Execution System](#execution-system)
-7. [Implementation Examples](#implementation-examples)
-8. [Best Practices](#best-practices)
+7. [Interceptor Development](#interceptor-development)
+8. [Implementation Examples](#implementation-examples)
+9. [Best Practices](#best-practices)
 
 ## Repository Structure
 
@@ -90,15 +91,44 @@ class MyService(Service):
 
 ### 3. Interceptor (jarvis_cd.basic.pkg.Interceptor)
 
-For packages that modify environment variables to intercept system calls (e.g., profiling tools, I/O interceptors).
+For packages that modify environment variables to intercept system calls (e.g., profiling tools, I/O interceptors). Interceptors work by modifying `LD_PRELOAD` and other environment variables to inject custom libraries into target applications.
 
 ```python
 from jarvis_cd.basic.pkg import Interceptor
 
 class MyInterceptor(Interceptor):
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'library_path',
+                'msg': 'Path to interceptor library',
+                'type': str,
+                'default': '/usr/lib/libinterceptor.so'
+            }
+        ]
+    
+    def configure(self, **kwargs):
+        self.update_config(kwargs, rebuild=False)
+        
+        # Find the interceptor library
+        lib_path = self.find_library('interceptor')
+        if not lib_path:
+            lib_path = self.config['library_path']
+            
+        if not os.path.exists(lib_path):
+            raise FileNotFoundError(f"Interceptor library not found: {lib_path}")
+            
+        self.interceptor_lib = lib_path
+    
     def modify_env(self):
-        # Modify environment variables
-        self.setenv('LD_PRELOAD', '/path/to/my/library.so')
+        # Add interceptor library to LD_PRELOAD
+        current_preload = self.mod_env.get('LD_PRELOAD', '')
+        if current_preload:
+            new_preload = f"{self.interceptor_lib}:{current_preload}"
+        else:
+            new_preload = self.interceptor_lib
+            
+        self.setenv('LD_PRELOAD', new_preload)
     
     def start(self):
         # Automatically calls modify_env()
@@ -363,6 +393,463 @@ exec_info = MpiExecInfo(
     nprocs=len(hostfile),  # Number of hosts
     ppn=4  # Processes per node
 )
+```
+
+## Interceptor Development
+
+Interceptors are specialized packages that modify the execution environment to intercept system calls, library calls, or I/O operations. They are commonly used for profiling, monitoring, debugging, and performance analysis.
+
+### Interceptor Architecture
+
+Interceptors work by:
+1. **Library Injection**: Adding shared libraries to `LD_PRELOAD`
+2. **Environment Modification**: Setting environment variables for interceptor configuration
+3. **Call Interception**: Using library preloading to override system/library functions
+
+### The find_library() Method
+
+The `find_library()` method helps locate shared libraries in the system for interceptor use:
+
+```python
+def find_library(self, library_name: str) -> Optional[str]:
+    """
+    Find a shared library by searching LD_LIBRARY_PATH and system paths.
+    
+    :param library_name: Name of the library to find
+    :return: Path to library if found, None otherwise
+    """
+```
+
+#### Library Search Order
+
+The method searches for libraries in this order:
+
+1. **Package-specific environment** (`self.mod_env` then `self.env`)
+2. **System LD_LIBRARY_PATH** 
+3. **Standard system paths**:
+   - `/usr/lib`
+   - `/usr/local/lib`
+   - `/usr/lib64`
+   - `/usr/local/lib64`
+   - `/lib`
+   - `/lib64`
+
+#### Library Name Variations
+
+For a library name like `"profiler"`, it searches for:
+- `libprofiler.so` (standard shared library)
+- `profiler.so` (as-is with .so extension)
+- `libprofiler.a` (static library)
+- `profiler` (exact name)
+
+#### Usage Examples
+
+```python
+# Find a profiling library
+profiler_lib = self.find_library('profiler')
+if profiler_lib:
+    self.setenv('LD_PRELOAD', profiler_lib)
+else:
+    raise RuntimeError("Profiler library not found")
+
+# Find MPI profiling library
+mpi_profiler = self.find_library('mpiP')
+if mpi_profiler:
+    current_preload = self.mod_env.get('LD_PRELOAD', '')
+    if current_preload:
+        self.setenv('LD_PRELOAD', f"{mpi_profiler}:{current_preload}")
+    else:
+        self.setenv('LD_PRELOAD', mpi_profiler)
+
+# Find multiple interceptor libraries
+interceptor_libs = []
+for lib_name in ['vtune', 'pin', 'callgrind']:
+    lib_path = self.find_library(lib_name)
+    if lib_path:
+        interceptor_libs.append(lib_path)
+        
+if interceptor_libs:
+    self.setenv('LD_PRELOAD', ':'.join(interceptor_libs))
+```
+
+### LD_PRELOAD Management
+
+Interceptors commonly need to manage `LD_PRELOAD` to inject multiple libraries:
+
+```python
+def add_to_preload(self, library_path: str):
+    """Add a library to LD_PRELOAD safely"""
+    current_preload = self.mod_env.get('LD_PRELOAD', '')
+    
+    # Check if library is already in preload
+    if library_path in current_preload.split(':'):
+        return
+        
+    if current_preload:
+        new_preload = f"{library_path}:{current_preload}"
+    else:
+        new_preload = library_path
+        
+    self.setenv('LD_PRELOAD', new_preload)
+
+def remove_from_preload(self, library_path: str):
+    """Remove a library from LD_PRELOAD"""
+    current_preload = self.mod_env.get('LD_PRELOAD', '')
+    if not current_preload:
+        return
+        
+    libs = current_preload.split(':')
+    libs = [lib for lib in libs if lib != library_path]
+    
+    if libs:
+        self.setenv('LD_PRELOAD', ':'.join(libs))
+    else:
+        # Remove LD_PRELOAD entirely if empty
+        if 'LD_PRELOAD' in self.mod_env:
+            del self.mod_env['LD_PRELOAD']
+```
+
+### Complete Interceptor Examples
+
+#### Performance Profiler Interceptor
+
+```python
+from jarvis_cd.basic.pkg import Interceptor
+import os
+
+class PerfProfiler(Interceptor):
+    """Performance profiling interceptor using custom profiling library"""
+    
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'profiler_lib',
+                'msg': 'Profiler library name or path',
+                'type': str,
+                'default': 'libprofiler'
+            },
+            {
+                'name': 'output_file',
+                'msg': 'Profiler output file',
+                'type': str,
+                'default': 'profile.out'
+            },
+            {
+                'name': 'sample_rate',
+                'msg': 'Profiling sample rate (Hz)',
+                'type': int,
+                'default': 1000
+            }
+        ]
+    
+    def configure(self, **kwargs):
+        self.update_config(kwargs, rebuild=False)
+        
+        # Try to find the profiler library
+        profiler_lib = self.find_library(self.config['profiler_lib'])
+        if not profiler_lib:
+            # Try using the config value as a direct path
+            profiler_lib = self.config['profiler_lib']
+            if not os.path.exists(profiler_lib):
+                raise FileNotFoundError(f"Profiler library not found: {self.config['profiler_lib']}")
+        
+        self.profiler_path = profiler_lib
+        self.log(f"Using profiler library: {self.profiler_path}")
+        
+        # Set profiler configuration environment
+        self.setenv('PROFILER_OUTPUT', self.config['output_file'])
+        self.setenv('PROFILER_SAMPLE_RATE', str(self.config['sample_rate']))
+    
+    def modify_env(self):
+        # Add profiler to LD_PRELOAD
+        self.add_to_preload(self.profiler_path)
+        self.log(f"Added profiler to LD_PRELOAD: {self.profiler_path}")
+    
+    def clean(self):
+        # Remove profiler output files
+        if os.path.exists(self.config['output_file']):
+            os.remove(self.config['output_file'])
+            
+    def add_to_preload(self, library_path: str):
+        current_preload = self.mod_env.get('LD_PRELOAD', '')
+        if current_preload:
+            self.setenv('LD_PRELOAD', f"{library_path}:{current_preload}")
+        else:
+            self.setenv('LD_PRELOAD', library_path)
+```
+
+#### I/O Tracing Interceptor
+
+```python
+from jarvis_cd.basic.pkg import Interceptor
+import os
+
+class IOTracer(Interceptor):
+    """I/O operation tracing interceptor"""
+    
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'trace_reads',
+                'msg': 'Trace read operations',
+                'type': bool,
+                'default': True
+            },
+            {
+                'name': 'trace_writes', 
+                'msg': 'Trace write operations',
+                'type': bool,
+                'default': True
+            },
+            {
+                'name': 'trace_file',
+                'msg': 'I/O trace output file',
+                'type': str,
+                'default': 'io_trace.log'
+            },
+            {
+                'name': 'min_size',
+                'msg': 'Minimum I/O size to trace (bytes)',
+                'type': int,
+                'default': 1024
+            }
+        ]
+    
+    def configure(self, **kwargs):
+        self.update_config(kwargs, rebuild=False)
+        
+        # Find the I/O tracing library
+        io_lib = self.find_library('iotrace')
+        if not io_lib:
+            raise RuntimeError("I/O tracing library (libiotrace.so) not found")
+            
+        self.iotrace_lib = io_lib
+        
+        # Set I/O tracer configuration
+        trace_ops = []
+        if self.config['trace_reads']:
+            trace_ops.append('read')
+        if self.config['trace_writes']:
+            trace_ops.append('write')
+            
+        self.setenv('IOTRACE_OPERATIONS', ','.join(trace_ops))
+        self.setenv('IOTRACE_OUTPUT', self.config['trace_file'])
+        self.setenv('IOTRACE_MIN_SIZE', str(self.config['min_size']))
+        
+    def modify_env(self):
+        # Add I/O tracer to LD_PRELOAD
+        current_preload = self.mod_env.get('LD_PRELOAD', '')
+        if current_preload:
+            self.setenv('LD_PRELOAD', f"{self.iotrace_lib}:{current_preload}")
+        else:
+            self.setenv('LD_PRELOAD', self.iotrace_lib)
+            
+        self.log(f"I/O tracing enabled: {self.config['trace_file']}")
+    
+    def status(self) -> str:
+        if 'LD_PRELOAD' in self.mod_env and self.iotrace_lib in self.mod_env['LD_PRELOAD']:
+            return "tracing"
+        return "inactive"
+        
+    def clean(self):
+        # Remove trace files
+        if os.path.exists(self.config['trace_file']):
+            os.remove(self.config['trace_file'])
+```
+
+#### Memory Debugging Interceptor
+
+```python
+from jarvis_cd.basic.pkg import Interceptor
+
+class MemoryDebugger(Interceptor):
+    """Memory debugging interceptor using AddressSanitizer or Valgrind"""
+    
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'tool',
+                'msg': 'Memory debugging tool',
+                'type': str,
+                'choices': ['asan', 'valgrind', 'tcmalloc'],
+                'default': 'asan'
+            },
+            {
+                'name': 'output_dir',
+                'msg': 'Output directory for debug reports',
+                'type': str,
+                'default': '/tmp/memdebug'
+            },
+            {
+                'name': 'detect_leaks',
+                'msg': 'Enable leak detection',
+                'type': bool,
+                'default': True
+            }
+        ]
+    
+    def configure(self, **kwargs):
+        self.update_config(kwargs, rebuild=False)
+        
+        tool = self.config['tool']
+        
+        if tool == 'asan':
+            # Find AddressSanitizer library
+            asan_lib = self.find_library('asan')
+            if not asan_lib:
+                raise RuntimeError("AddressSanitizer library not found")
+            self.debug_lib = asan_lib
+            
+        elif tool == 'valgrind':
+            # Valgrind doesn't use LD_PRELOAD, just set options
+            self.debug_lib = None
+            
+        elif tool == 'tcmalloc':
+            # Find TCMalloc debug library
+            tcmalloc_lib = self.find_library('tcmalloc_debug')
+            if not tcmalloc_lib:
+                raise RuntimeError("TCMalloc debug library not found")
+            self.debug_lib = tcmalloc_lib
+            
+        # Create output directory
+        os.makedirs(self.config['output_dir'], exist_ok=True)
+        
+    def modify_env(self):
+        tool = self.config['tool']
+        output_dir = self.config['output_dir']
+        
+        if tool == 'asan':
+            # Configure AddressSanitizer
+            asan_options = [
+                'abort_on_error=1',
+                f'log_path={output_dir}/asan',
+                'print_stats=1'
+            ]
+            
+            if self.config['detect_leaks']:
+                asan_options.append('detect_leaks=1')
+                
+            self.setenv('ASAN_OPTIONS', ':'.join(asan_options))
+            
+            # Add ASAN library to LD_PRELOAD
+            current_preload = self.mod_env.get('LD_PRELOAD', '')
+            if current_preload:
+                self.setenv('LD_PRELOAD', f"{self.debug_lib}:{current_preload}")
+            else:
+                self.setenv('LD_PRELOAD', self.debug_lib)
+                
+        elif tool == 'valgrind':
+            # Valgrind is handled at execution time, not through LD_PRELOAD
+            # Set valgrind options for applications that check for them
+            valgrind_options = [
+                '--tool=memcheck',
+                '--leak-check=full',
+                f'--log-file={output_dir}/valgrind.log'
+            ]
+            self.setenv('VALGRIND_OPTS', ' '.join(valgrind_options))
+            
+        elif tool == 'tcmalloc':
+            # Configure TCMalloc
+            self.setenv('TCMALLOC_DEBUG', '1')
+            self.setenv('TCMALLOC_DEBUG_LOG', f'{output_dir}/tcmalloc.log')
+            
+            # Add TCMalloc to LD_PRELOAD
+            current_preload = self.mod_env.get('LD_PRELOAD', '')
+            if current_preload:
+                self.setenv('LD_PRELOAD', f"{self.debug_lib}:{current_preload}")
+            else:
+                self.setenv('LD_PRELOAD', self.debug_lib)
+                
+        self.log(f"Memory debugging enabled with {tool}")
+```
+
+### Interceptor Best Practices
+
+#### 1. Always Check Library Availability
+
+```python
+def configure(self, **kwargs):
+    self.update_config(kwargs, rebuild=False)
+    
+    # Always verify library exists before using
+    lib_path = self.find_library('myinterceptor')
+    if not lib_path:
+        raise RuntimeError(f"Required library 'myinterceptor' not found")
+    
+    self.interceptor_lib = lib_path
+```
+
+#### 2. Provide Fallback Options
+
+```python
+def configure(self, **kwargs):
+    self.update_config(kwargs, rebuild=False)
+    
+    # Try multiple library names/versions
+    for lib_name in ['libprofiler_v2', 'libprofiler', 'profiler']:
+        lib_path = self.find_library(lib_name)
+        if lib_path:
+            self.profiler_lib = lib_path
+            break
+    else:
+        # Fallback to configuration path
+        lib_path = self.config.get('library_path')
+        if lib_path and os.path.exists(lib_path):
+            self.profiler_lib = lib_path
+        else:
+            raise RuntimeError("No suitable profiler library found")
+```
+
+#### 3. Handle Multiple Interceptors
+
+```python
+def modify_env(self):
+    # Check if other interceptors are already in LD_PRELOAD
+    current_preload = self.mod_env.get('LD_PRELOAD', '')
+    
+    # Don't add if already present
+    if self.interceptor_lib not in current_preload.split(':'):
+        if current_preload:
+            self.setenv('LD_PRELOAD', f"{self.interceptor_lib}:{current_preload}")
+        else:
+            self.setenv('LD_PRELOAD', self.interceptor_lib)
+```
+
+#### 4. Provide Configuration Validation
+
+```python
+def configure(self, **kwargs):
+    self.update_config(kwargs, rebuild=False)
+    
+    # Validate configuration
+    if self.config['sample_rate'] <= 0:
+        raise ValueError("Sample rate must be positive")
+        
+    if not os.path.exists(os.path.dirname(self.config['output_file'])):
+        os.makedirs(os.path.dirname(self.config['output_file']), exist_ok=True)
+    
+    # Find and validate library
+    lib_path = self.find_library(self.config['library_name'])
+    if not lib_path:
+        raise FileNotFoundError(f"Library not found: {self.config['library_name']}")
+    
+    self.interceptor_lib = lib_path
+```
+
+#### 5. Clean Up Properly
+
+```python
+def clean(self):
+    # Remove output files
+    for pattern in ['*.log', '*.trace', '*.prof']:
+        for file_path in glob.glob(os.path.join(self.config['output_dir'], pattern)):
+            os.remove(file_path)
+    
+    # Remove output directory if empty
+    try:
+        os.rmdir(self.config['output_dir'])
+    except OSError:
+        pass  # Directory not empty
 ```
 
 ## Implementation Examples

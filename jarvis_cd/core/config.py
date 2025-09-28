@@ -164,17 +164,47 @@ class JarvisConfig:
             yaml.dump(resource_graph, f, default_flow_style=False)
         self._resource_graph = resource_graph
         
-    def add_repo(self, repo_path: str):
+    def add_repo(self, repo_path: str, force: bool = False):
         """Add a repository to the repos configuration"""
         repo_path = str(Path(repo_path).absolute())
         repos = self.repos.copy()
         
-        if repo_path not in repos['repos']:
+        # Check for existing repository with same name (not just same path)
+        repo_name = Path(repo_path).name
+        existing_repos_with_same_name = [
+            existing_path for existing_path in repos['repos'] 
+            if Path(existing_path).name == repo_name
+        ]
+        
+        if repo_path in repos['repos']:
+            if force:
+                # Repository path already exists - remove and re-add to update order
+                repos['repos'].remove(repo_path)
+                repos['repos'].insert(0, repo_path)
+                self.save_repos(repos)
+                print(f"Repository already exists - updated position: {repo_path}")
+            else:
+                print(f"Repository already exists: {repo_path}")
+                print("Use --force to override existing repository")
+        elif existing_repos_with_same_name:
+            if force:
+                # Remove existing repositories with same name
+                for existing_path in existing_repos_with_same_name:
+                    repos['repos'].remove(existing_path)
+                    print(f"Removed existing repository: {existing_path}")
+                # Add new repository
+                repos['repos'].insert(0, repo_path)
+                self.save_repos(repos)
+                print(f"Added repository (replacing existing): {repo_path}")
+            else:
+                print(f"Repository with name '{repo_name}' already exists:")
+                for existing_path in existing_repos_with_same_name:
+                    print(f"  {existing_path}")
+                print("Use --force to replace existing repository")
+        else:
             repos['repos'].insert(0, repo_path)  # Add to front for priority
             self.save_repos(repos)
             print(f"Added repository: {repo_path}")
-        else:
-            print(f"Repository already exists: {repo_path}")
             
     def remove_repo(self, repo_path: str):
         """Remove a repository from the repos configuration"""
@@ -250,13 +280,39 @@ class JarvisConfig:
         try:
             import importlib.util
             import importlib.metadata
+            import site
             
-            # Look for builtin in installed package
-            dist = importlib.metadata.distribution('jarvis_cd')
-            if hasattr(dist, 'files') and dist.files:
-                for file in dist.files:
-                    if 'builtin' in str(file) and str(file).endswith('builtin/__init__.py'):
-                        return Path(file).parent.parent
+            # Method 1: Try to find builtin package directly
+            try:
+                import builtin
+                builtin_module_path = Path(builtin.__file__).parent
+                if builtin_module_path.exists():
+                    return builtin_module_path
+            except ImportError:
+                pass
+            
+            # Method 2: Look for builtin in installed package files
+            try:
+                dist = importlib.metadata.distribution('jarvis_cd')
+                if hasattr(dist, 'files') and dist.files:
+                    for file in dist.files:
+                        if 'builtin' in str(file) and str(file).endswith('builtin/__init__.py'):
+                            # Get the actual installation path
+                            for path in site.getsitepackages() + [site.getusersitepackages()]:
+                                if path:
+                                    candidate = Path(path) / file.parent
+                                    if candidate.exists():
+                                        return candidate
+            except Exception:
+                pass
+                
+            # Method 3: Search in site-packages
+            for path in site.getsitepackages() + [site.getusersitepackages()]:
+                if path:
+                    builtin_path = Path(path) / 'builtin'
+                    if builtin_path.exists() and (builtin_path / '__init__.py').exists():
+                        return builtin_path
+                        
         except Exception:
             pass
             

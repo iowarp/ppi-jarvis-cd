@@ -44,6 +44,7 @@ include-package-data = true
 [tool.setuptools.package-data]
 jarvis_cd = ["*.yaml", "*.yml"]
 "*" = ["*.py", "*.yaml", "*.yml", "*.md", "*.txt", "*.conf", "*.xml", "*.param", "*.f", "*.input", "*.png", "*.sh"]
+builtin = ["pipelines/**/*.yaml", "pipelines/**/*.yml"]
 
 [project.scripts]
 jarvis = "jarvis_cd.core.cli:main"

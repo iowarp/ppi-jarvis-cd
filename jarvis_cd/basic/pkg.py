@@ -195,17 +195,19 @@ class Pkg:
         :param env_name: Environment variable name
         :param val: Value to prepend
         """
-        current_val = self.env.get(env_name, '')
-        if current_val:
-            self.env[env_name] = f"{val}:{current_val}"
-        else:
-            self.env[env_name] = val
-            
         # Ensure mod_env is a copy, not a reference
         if not self.mod_env or self.mod_env is self.env:
             self.mod_env = self.env.copy()
-            
-        # Also update mod_env
+        
+        # For non-LD_PRELOAD variables, also update the base env
+        if env_name != 'LD_PRELOAD':
+            current_val = self.env.get(env_name, '')
+            if current_val:
+                self.env[env_name] = f"{val}:{current_val}"
+            else:
+                self.env[env_name] = val
+        
+        # Always update mod_env (LD_PRELOAD only affects mod_env, others affect both)
         current_mod_val = self.mod_env.get(env_name, '')
         if current_mod_val:
             self.mod_env[env_name] = f"{val}:{current_mod_val}"
@@ -227,37 +229,67 @@ class Pkg:
         
     def find_library(self, library_name: str) -> Optional[str]:
         """
-        Find a shared library in the system paths.
+        Find a shared library by searching LD_LIBRARY_PATH and system paths.
         
         :param library_name: Name of the library to find
         :return: Path to library if found, None otherwise
         """
-        # Simple implementation - in a real system this would check LD_LIBRARY_PATH
         import shutil
         
-        # Try to find with lib prefix and .so suffix
-        lib_file = f"lib{library_name}.so"
-        lib_path = shutil.which(lib_file)
-        if lib_path:
-            return lib_path
-            
-        # Try without modifications
-        lib_path = shutil.which(library_name)
-        if lib_path:
-            return lib_path
-            
-        # Check common library directories
-        common_lib_dirs = [
-            "/usr/lib",
-            "/usr/local/lib",
-            "/usr/lib64",
-            "/usr/local/lib64"
+        # Generate possible library filenames
+        lib_filenames = [
+            f"lib{library_name}.so",     # Standard shared library
+            f"{library_name}.so",        # Library name as-is with .so
+            f"lib{library_name}.a",      # Static library
+            library_name                 # Exact name as provided
         ]
         
-        for lib_dir in common_lib_dirs:
-            full_path = os.path.join(lib_dir, lib_file)
-            if os.path.exists(full_path):
-                return full_path
+        # Collect all library search paths in priority order
+        search_paths = []
+        
+        # 1. Package-specific environment (mod_env takes precedence over env)
+        mod_ld_path = self.mod_env.get('LD_LIBRARY_PATH')
+        if mod_ld_path:
+            search_paths.extend(mod_ld_path.split(':'))
+        
+        env_ld_path = self.env.get('LD_LIBRARY_PATH')
+        if env_ld_path:
+            search_paths.extend(env_ld_path.split(':'))
+        
+        # 2. System LD_LIBRARY_PATH
+        system_ld_path = os.environ.get('LD_LIBRARY_PATH')
+        if system_ld_path:
+            search_paths.extend(system_ld_path.split(':'))
+        
+        # 3. Common system library directories
+        search_paths.extend([
+            "/usr/lib",
+            "/usr/local/lib", 
+            "/usr/lib64",
+            "/usr/local/lib64",
+            "/lib",
+            "/lib64"
+        ])
+        
+        # Search for the library in all paths
+        for search_path in search_paths:
+            if not search_path:  # Skip empty paths
+                continue
+                
+            search_dir = Path(search_path)
+            if not search_dir.exists():
+                continue
+                
+            for lib_filename in lib_filenames:
+                lib_path = search_dir / lib_filename
+                if lib_path.exists():
+                    return str(lib_path)
+        
+        # Fallback: try using shutil.which for executable-style lookup
+        for lib_filename in lib_filenames:
+            lib_path = shutil.which(lib_filename)
+            if lib_path:
+                return lib_path
                 
         return None
         

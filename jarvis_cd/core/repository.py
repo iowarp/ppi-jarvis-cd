@@ -18,11 +18,12 @@ class RepositoryManager:
         """
         self.jarvis_config = jarvis_config
         
-    def add_repository(self, repo_path: str):
+    def add_repository(self, repo_path: str, force: bool = False):
         """
         Add a repository to Jarvis.
         
         :param repo_path: Path to repository directory
+        :param force: Force overwrite if repository already exists
         """
         repo_path = Path(repo_path).absolute()
         
@@ -40,7 +41,7 @@ class RepositoryManager:
             print(f"Warning: Repository {repo_path} does not contain expected subdirectory {repo_name}")
             print("Expected structure: repo_name/repo_name/package_name/package.py")
             
-        self.jarvis_config.add_repo(str(repo_path))
+        self.jarvis_config.add_repo(str(repo_path), force=force)
         
     def remove_repository(self, repo_path: str):
         """

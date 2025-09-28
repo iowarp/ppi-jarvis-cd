@@ -681,12 +681,6 @@ class PipelineManager:
                         print("    Configuration: None")
             else:
                 print("No packages in pipeline")
-                
-            env = pipeline_config.get('env', {})
-            if env:
-                print("Environment:")
-                for key, value in env.items():
-                    print(f"  {key}: {value}")
                     
             last_loaded = pipeline_config.get('last_loaded_file')
             if last_loaded:
