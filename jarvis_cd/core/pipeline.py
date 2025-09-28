@@ -203,11 +203,39 @@ class PipelineManager:
         pipeline_dir = self.jarvis_config.get_pipeline_dir(pipeline_name)
         pipeline_dir.mkdir(parents=True, exist_ok=True)
         
+        # Handle environment - can be a string (named env), dict (inline env), or missing (auto-build)
+        pipeline_env = {}
+        env_field = pipeline_def.get('env')
+        
+        if env_field is None:
+            # No env field defined - automatically build environment like 'jarvis ppl env build'
+            try:
+                from jarvis_cd.core.environment import EnvironmentManager
+                env_manager = EnvironmentManager(self.jarvis_config)
+                pipeline_env = env_manager._capture_current_environment()
+                print(f"Auto-built environment with {len(pipeline_env)} variables (no 'env' field in pipeline)")
+            except Exception as e:
+                print(f"Warning: Could not auto-build environment: {e}")
+                pipeline_env = {}
+        elif isinstance(env_field, str):
+            # Reference to named environment
+            env_name = env_field
+            try:
+                from jarvis_cd.core.environment import EnvironmentManager
+                env_manager = EnvironmentManager(self.jarvis_config)
+                pipeline_env = env_manager.load_named_environment(env_name)
+            except Exception as e:
+                print(f"Warning: Could not load named environment '{env_name}': {e}")
+                pipeline_env = {}
+        elif isinstance(env_field, dict):
+            # Inline environment variables
+            pipeline_env = env_field
+        
         # Convert pipeline definition to internal format
         pipeline_config = {
             'name': pipeline_name,
             'packages': [],
-            'env': pipeline_def.get('env', {}),
+            'env': pipeline_env,
             'created_at': str(Path().cwd()),
             'last_loaded_file': str(pipeline_file.absolute())
         }
@@ -223,28 +251,13 @@ class PipelineManager:
                 'pkg_name': pkg_type.split('.')[-1],
                 'global_id': f"{pipeline_name}.{pkg_id}",
                 'config': {k: v for k, v in pkg_def.items() 
-                          if k not in ['pkg_type', 'pkg_name', 'interceptors']},
-                'interceptors': pkg_def.get('interceptors', [])
+                          if k not in ['pkg_type', 'pkg_name']}
             }
             
             pipeline_config['packages'].append(package_entry)
             
-        # Process interceptors
-        for interceptor_def in pipeline_def.get('interceptors', []):
-            pkg_type = interceptor_def['pkg_type']
-            pkg_id = interceptor_def.get('pkg_name', pkg_type)
-            
-            package_entry = {
-                'pkg_type': pkg_type,
-                'pkg_id': pkg_id,
-                'pkg_name': pkg_type.split('.')[-1],
-                'global_id': f"{pipeline_name}.{pkg_id}",
-                'config': {k: v for k, v in interceptor_def.items() 
-                          if k not in ['pkg_type', 'pkg_name']},
-                'is_interceptor': True
-            }
-            
-            pipeline_config['packages'].append(package_entry)
+        # Note: Interceptors are now handled at the package level through configure_menu parameters
+        # No separate interceptor processing needed during pipeline loading
             
         # Save pipeline configuration
         config_file = pipeline_dir / 'pipeline.yaml'
@@ -284,9 +297,19 @@ class PipelineManager:
         print(f"Updating pipeline from: {last_loaded_file}")
         self.load_pipeline(update_type, last_loaded_file)
         
-    def run_pipeline(self):
-        """Run the current pipeline (start all packages, then stop them)"""
+    def run_pipeline(self, load_type: Optional[str] = None, pipeline_file: Optional[str] = None):
+        """
+        Run the current pipeline (start all packages, then stop them).
+        Optionally load a pipeline file first.
+        
+        :param load_type: Type of pipeline file to load (e.g., 'yaml')
+        :param pipeline_file: Path to pipeline file to load and run
+        """
         try:
+            # Load pipeline file if specified
+            if load_type and pipeline_file:
+                self.load_pipeline(load_type, pipeline_file)
+                
             self.start_pipeline()
             logger.pipeline("Pipeline started successfully. Stopping packages...")
             self.stop_pipeline()
@@ -315,6 +338,7 @@ class PipelineManager:
         pipeline_env = self._load_pipeline_environment(current_pipeline_dir)
         
         # Load and start each package with environment propagation
+        # Interceptors are now processed during package start() method
         for pkg_def in pipeline_config['packages']:
             try:
                 logger.package(f"Starting package: {pkg_def['pkg_id']}")
@@ -440,15 +464,16 @@ class PipelineManager:
         # Load pipeline environment
         pipeline_env = self._load_pipeline_environment(current_pipeline_dir)
         
+        # Show status for all packages
         for pkg_def in pipeline_config['packages']:
             try:
                 pkg_instance = self._load_package_instance(pkg_def, pipeline_env)
                 
-                if hasattr(pkg_instance, 'status'):
+                if pkg_instance and hasattr(pkg_instance, 'status'):
                     status = pkg_instance.status()
-                    print(f"  {pkg_def['pkg_id']}: {status}")
+                    print(f"  {pkg_def['pkg_id']} (package): {status}")
                 else:
-                    print(f"  {pkg_def['pkg_id']}: no status method")
+                    print(f"  {pkg_def['pkg_id']} (package): no status method")
                     
             except Exception as e:
                 print(f"  {pkg_def['pkg_id']}: error ({e})")
@@ -485,6 +510,8 @@ class PipelineManager:
         Load a package instance from package definition.
         
         :param pkg_def: Package definition dictionary
+        :param pipeline_env: Pipeline environment variables
+        :param interceptor_instances: Dictionary of loaded interceptor instances by name
         :return: Package instance
         """
         pkg_type = pkg_def['pkg_type']
@@ -552,11 +579,13 @@ class PipelineManager:
         if pipeline_env is None:
             pipeline_env = {}
             
-        # Set env (shared across pipeline) and mod_env (package-specific copy)
+        # Set env (shared across pipeline) and mod_env (package-specific isolated copy)
         if hasattr(pkg_instance, 'env'):
             pkg_instance.env = pipeline_env.copy()
         if hasattr(pkg_instance, 'mod_env'):
             pkg_instance.mod_env = copy.deepcopy(pipeline_env)
+            
+        # Note: Interceptor processing is now handled during package start() method
             
         # Configure the package to set up its environment
         if hasattr(pkg_instance, 'configure') and pkg_instance.config:

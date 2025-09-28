@@ -2,7 +2,7 @@
 Example Application package for testing interceptors
 """
 
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.basic.pkg import Application, Interceptor
 from jarvis_cd.shell import Exec, LocalExecInfo
 import os
 
@@ -98,3 +98,17 @@ echo "ExampleApp finished successfully"
         Check if the application completed successfully
         """
         return os.path.exists(self.output_path)
+
+    def modify_env(self):
+        """
+        Modify environment when used as an interceptor
+        """
+        self.log('ExampleApp acting as interceptor - setting EXAMPLE_VAR')
+        self.setenv('EXAMPLE_VAR', 'test_value_from_interceptor')
+        self.setenv('INTERCEPTOR_APPLIED', 'example_app')
+        
+    def log(self, message):
+        """
+        Simple logging method
+        """
+        print(f"[ExampleApp] {message}")

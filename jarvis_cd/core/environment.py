@@ -266,6 +266,30 @@ class EnvironmentManager:
         else:
             print("  No environment variables set")
             
+    def load_named_environment(self, env_name: str) -> Dict[str, str]:
+        """
+        Load a named environment and return its variables.
+        
+        :param env_name: Name of the environment to load
+        :return: Dictionary of environment variables
+        :raises FileNotFoundError: If the named environment doesn't exist
+        """
+        env_dir = self.jarvis_config.jarvis_root / 'env'
+        env_file = env_dir / f'{env_name}.yaml'
+        
+        if not env_file.exists():
+            available_envs = self.list_named_environments()
+            if available_envs:
+                error_msg = f"Named environment '{env_name}' not found. Available: {', '.join(available_envs)}"
+            else:
+                error_msg = f"Named environment '{env_name}' not found. No named environments exist."
+            raise FileNotFoundError(error_msg)
+            
+        with open(env_file, 'r') as f:
+            env_vars = yaml.safe_load(f) or {}
+            
+        return env_vars
+            
     def _capture_current_environment(self) -> Dict[str, str]:
         """
         Capture current environment variables that are commonly used in builds.

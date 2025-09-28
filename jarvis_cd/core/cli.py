@@ -4,9 +4,11 @@ from pathlib import Path
 from jarvis_cd.util.argparse import ArgParse
 from jarvis_cd.core.config import JarvisConfig, Jarvis
 from jarvis_cd.core.pipeline import PipelineManager
+from jarvis_cd.core.pipeline_index import PipelineIndexManager
 from jarvis_cd.core.repository import RepositoryManager
 from jarvis_cd.core.package import PackageManager
 from jarvis_cd.core.environment import EnvironmentManager
+from jarvis_cd.core.resource_graph import ResourceGraphManager
 
 
 class JarvisCLI(ArgParse):
@@ -19,9 +21,11 @@ class JarvisCLI(ArgParse):
         super().__init__()
         self.jarvis_config = None
         self.pipeline_manager = None
+        self.pipeline_index_manager = None
         self.repo_manager = None
         self.pkg_manager = None
         self.env_manager = None
+        self.rg_manager = None
         
     def define_options(self):
         """Define the complete Jarvis CLI command structure"""
@@ -110,17 +114,17 @@ class JarvisCLI(ArgParse):
         self.add_cmd('ppl run', msg="Run a pipeline", aliases=['ppl r'])
         self.add_args([
             {
-                'name': 'pipeline_file',
-                'msg': 'Pipeline YAML file to run',
-                'type': str,
-                'pos': True
-            },
-            {
                 'name': 'load_type',
-                'msg': 'Type of pipeline to load',
+                'msg': 'Type of pipeline to load (yaml) or current',
                 'type': str,
                 'pos': True,
                 'default': 'current'
+            },
+            {
+                'name': 'pipeline_file',
+                'msg': 'Pipeline YAML file to run (required if load_type is yaml)',
+                'type': str,
+                'pos': True
             }
         ])
         
@@ -204,6 +208,49 @@ class JarvisCLI(ArgParse):
         
         self.add_cmd('ppl env show', msg="Show current pipeline environment")
         self.add_args([])
+        
+        # Pipeline index commands
+        self.add_menu('ppl index', msg="Pipeline index management")
+        
+        self.add_cmd('ppl index load', msg="Load a pipeline script from an index")
+        self.add_args([
+            {
+                'name': 'index_query',
+                'msg': 'Index query (e.g., repo.subdir.script)',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('ppl index copy', msg="Copy a pipeline script from an index")
+        self.add_args([
+            {
+                'name': 'index_query',
+                'msg': 'Index query (e.g., repo.subdir.script)',
+                'type': str,
+                'required': True,
+                'pos': True
+            },
+            {
+                'name': 'output',
+                'msg': 'Output directory or file (optional)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('ppl index list', msg="List available pipeline scripts in indexes", aliases=['ppl index ls'])
+        self.add_args([
+            {
+                'name': 'repo_name',
+                'msg': 'Repository name to list (optional)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
         
         # Change directory (switch current pipeline)
         self.add_cmd('cd', msg="Change current pipeline")
@@ -323,6 +370,64 @@ class JarvisCLI(ArgParse):
             }
         ])
         
+        # Resource graph commands
+        self.add_menu('rg', msg="Resource graph management")
+        
+        self.add_cmd('rg build', msg="Build resource graph from hostfile")
+        self.add_args([
+            {
+                'name': 'no_benchmark',
+                'msg': 'Skip performance benchmarking',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'duration',
+                'msg': 'Benchmark duration in seconds',
+                'type': int,
+                'default': 25
+            }
+        ])
+        
+        self.add_cmd('rg show', msg="Show resource graph summary")
+        self.add_args([])
+        
+        self.add_cmd('rg nodes', msg="List nodes in resource graph")
+        self.add_args([])
+        
+        self.add_cmd('rg node', msg="Show detailed node information")
+        self.add_args([
+            {
+                'name': 'hostname',
+                'msg': 'Hostname to show details for',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('rg filter', msg="Filter storage by device type")
+        self.add_args([
+            {
+                'name': 'dev_type',
+                'msg': 'Device type to filter by (ssd, hdd, etc.)',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('rg load', msg="Load resource graph from file")
+        self.add_args([
+            {
+                'name': 'file_path',
+                'msg': 'Path to resource graph file',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
     def _ensure_initialized(self):
         """Ensure Jarvis is initialized before running commands"""
         if self.jarvis_config is None:
@@ -352,6 +457,10 @@ class JarvisCLI(ArgParse):
             self.pkg_manager = PackageManager(self.jarvis_config)
         if self.env_manager is None:
             self.env_manager = EnvironmentManager(self.jarvis_config)
+        if self.rg_manager is None:
+            self.rg_manager = ResourceGraphManager(self.jarvis_config)
+        if self.pipeline_index_manager is None:
+            self.pipeline_index_manager = PipelineIndexManager(self.jarvis_config)
     
     def main_menu(self):
         """Handle main menu / help"""
@@ -400,14 +509,17 @@ class JarvisCLI(ArgParse):
     def ppl_run(self):
         """Run pipeline"""
         self._ensure_initialized()
-        pipeline_file = self.kwargs.get('pipeline_file')
         load_type = self.kwargs.get('load_type', 'current')
+        pipeline_file = self.kwargs.get('pipeline_file')
         
-        if pipeline_file and load_type != 'current':
-            # Load and run pipeline file
-            self.pipeline_manager.load_pipeline(load_type, pipeline_file)
-            
-        self.pipeline_manager.run_pipeline()
+        if load_type == 'yaml':
+            if not pipeline_file:
+                raise ValueError("Pipeline file is required when load_type is 'yaml'")
+            # Load and run pipeline file in one command
+            self.pipeline_manager.run_pipeline(load_type, pipeline_file)
+        else:
+            # Run current pipeline
+            self.pipeline_manager.run_pipeline()
         
     def ppl_start(self):
         """Start current pipeline"""
@@ -552,6 +664,80 @@ class JarvisCLI(ArgParse):
         self._ensure_initialized()
         hostfile_path = self.kwargs['hostfile_path']
         self.jarvis_config.set_hostfile(hostfile_path)
+        
+    def rg_build(self):
+        """Build resource graph"""
+        self._ensure_initialized()
+        benchmark = not self.kwargs.get('no_benchmark', False)
+        duration = self.kwargs.get('duration', 25)
+        self.rg_manager.build_resource_graph(benchmark=benchmark, duration=duration)
+        
+    def rg_show(self):
+        """Show resource graph summary"""
+        self._ensure_initialized()
+        self.rg_manager.show_resource_graph()
+        
+    def rg_nodes(self):
+        """List nodes in resource graph"""
+        self._ensure_initialized()
+        self.rg_manager.list_nodes()
+        
+    def rg_node(self):
+        """Show detailed node information"""
+        self._ensure_initialized()
+        hostname = self.kwargs['hostname']
+        self.rg_manager.show_node_details(hostname)
+        
+    def rg_filter(self):
+        """Filter storage by device type"""
+        self._ensure_initialized()
+        dev_type = self.kwargs['dev_type']
+        self.rg_manager.filter_by_type(dev_type)
+        
+    def rg_load(self):
+        """Load resource graph from file"""
+        self._ensure_initialized()
+        file_path = Path(self.kwargs['file_path'])
+        self.rg_manager.load_resource_graph(file_path)
+        
+    def ppl_index_load(self):
+        """Load a pipeline script from an index"""
+        self._ensure_initialized()
+        index_query = self.kwargs['index_query']
+        self.pipeline_index_manager.load_pipeline_from_index(index_query)
+        
+    def ppl_index_copy(self):
+        """Copy a pipeline script from an index"""
+        self._ensure_initialized()
+        index_query = self.kwargs['index_query']
+        output = self.kwargs.get('output')
+        self.pipeline_index_manager.copy_pipeline_from_index(index_query, output)
+        
+    def ppl_index_list(self):
+        """List available pipeline scripts in indexes"""
+        self._ensure_initialized()
+        repo_name = self.kwargs.get('repo_name')
+        available_scripts = self.pipeline_index_manager.list_available_scripts(repo_name)
+        
+        if not available_scripts:
+            print("No pipeline indexes found in any repositories.")
+            return
+            
+        if repo_name:
+            print(f"Available pipeline scripts in {repo_name}:")
+        else:
+            print("Available pipeline scripts:")
+            
+        for repo, scripts in available_scripts.items():
+            if repo_name and repo != repo_name:
+                continue
+            if not repo_name:
+                print(f"  {repo}:")
+            for script in scripts:
+                if repo_name:
+                    print(f"  {script}")
+                else:
+                    print(f"    {script}")
 
 
 def main():

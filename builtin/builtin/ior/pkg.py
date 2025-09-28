@@ -4,14 +4,14 @@ Ior is a benchmark tool for measuring the performance of I/O systems.
 It is a simple tool that can be used to measure the performance of a file system.
 It is mainly targeted for HPC systems and parallel I/O.
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.basic.pkg import SimplePackage
 from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo, PsshExecInfo, Rm
 from jarvis_cd.util import Hostfile
 import os
 import pathlib
 
 
-class Ior(Application):
+class Ior(SimplePackage):
     """
     This class provides methods to launch the Ior application.
     """
@@ -29,7 +29,11 @@ class Ior(Application):
 
         :return: List(dict)
         """
-        return [
+        # Get base menu from SimplePackage (includes interceptors)
+        base_menu = super()._configure_menu()
+        
+        # Add IOR-specific menu items
+        ior_menu = [
             {
                 'name': 'write',
                 'msg': 'Perform a write workload',
@@ -102,6 +106,9 @@ class Ior(Application):
                 'default': None,
             },
         ]
+        
+        # Combine base menu (interceptors) with IOR-specific menu
+        return base_menu + ior_menu
 
     def _configure(self, **kwargs):
         """
@@ -111,9 +118,12 @@ class Ior(Application):
         :param kwargs: Configuration parameters for this pkg.
         :return: None
         """
+        # Call parent configuration (handles interceptors)
+        super()._configure(**kwargs)
+        
         self.config['api'] = self.config['api'].upper()
 
-    def start(self):
+    def _start(self):
         """
         Launch an application. E.g., OrangeFS will launch the servers, clients,
         and metadata services on all necessary pkgs.
@@ -181,3 +191,9 @@ class Ior(Application):
         :return: None
         """
         stat_dict[f'{self.pkg_id}.runtime'] = self.start_time
+        
+    def log(self, message):
+        """
+        Simple logging method
+        """
+        print(f"[IOR:{self.pkg_id}] {message}")

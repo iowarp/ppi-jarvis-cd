@@ -1,0 +1,303 @@
+"""
+Resource graph utilities for Jarvis.
+Manages storage resource collection and analysis across nodes.
+"""
+import json
+import yaml
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Set
+from collections import defaultdict
+from .logger import logger
+
+
+class StorageDevice:
+    """Represents a single storage device/filesystem."""
+    
+    def __init__(self, data: Dict[str, Any], hostname: str):
+        """
+        Initialize storage device from collected data.
+        
+        :param data: Device data dictionary
+        :param hostname: Hostname where device is located
+        """
+        self.hostname = hostname
+        self.device = data.get('device', '')
+        self.mount = data.get('mount', '')
+        self.fs_type = data.get('fs_type', 'unknown')
+        self.avail = data.get('avail', '0B')
+        self.dev_type = data.get('dev_type', 'unknown')
+        self.model = data.get('model', 'unknown')
+        self.parent = data.get('parent', '')
+        self.uuid = data.get('uuid', '')
+        self.needs_root = data.get('needs_root', False)
+        self.shared = data.get('shared', False)
+        self.randwrite_4k_bw = data.get('4k_randwrite_bw', 'unknown')
+        self.seqwrite_1m_bw = data.get('1m_seqwrite_bw', 'unknown')
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary representation."""
+        return {
+            'device': self.device,
+            'mount': self.mount,
+            'fs_type': self.fs_type,
+            'avail': self.avail,
+            'dev_type': self.dev_type,
+            'model': self.model,
+            'parent': self.parent,
+            'uuid': self.uuid,
+            'needs_root': self.needs_root,
+            'shared': self.shared,
+            '4k_randwrite_bw': self.randwrite_4k_bw,
+            '1m_seqwrite_bw': self.seqwrite_1m_bw
+        }
+        
+    def __str__(self) -> str:
+        return f"{self.device}@{self.hostname}:{self.mount} ({self.avail}, {self.dev_type})"
+
+
+class ResourceGraph:
+    """
+    Manages storage resource information across multiple nodes.
+    Collects, analyzes, and provides views of storage resources.
+    """
+    
+    def __init__(self):
+        """Initialize empty resource graph."""
+        self.nodes: Dict[str, List[StorageDevice]] = {}
+        self.common_mounts: Dict[str, List[StorageDevice]] = {}
+        
+    def add_node_data(self, hostname: str, resource_data: Dict[str, Any]):
+        """
+        Add resource data for a node.
+        
+        :param hostname: Hostname of the node
+        :param resource_data: Resource data collected from the node
+        """
+        if hostname not in self.nodes:
+            self.nodes[hostname] = []
+            
+        # Convert filesystem data to StorageDevice objects
+        for fs_data in resource_data.get('fs', []):
+            device = StorageDevice(fs_data, hostname)
+            self.nodes[hostname].append(device)
+            
+        # Update common mounts analysis
+        self._analyze_common_mounts()
+        
+    def _analyze_common_mounts(self):
+        """Analyze which mount points are common across nodes."""
+        mount_counts: Dict[str, List[StorageDevice]] = defaultdict(list)
+        
+        # Group devices by mount point
+        for hostname, devices in self.nodes.items():
+            for device in devices:
+                mount_counts[device.mount].append(device)
+                
+        # Find mounts that exist on multiple nodes
+        self.common_mounts = {}
+        total_nodes = len(self.nodes)
+        
+        for mount_point, devices in mount_counts.items():
+            if len(devices) > 1:  # Exists on multiple nodes
+                # Mark as shared if on multiple nodes
+                for device in devices:
+                    device.shared = True
+                self.common_mounts[mount_point] = devices
+                
+    def get_common_storage(self) -> Dict[str, List[StorageDevice]]:
+        """
+        Get storage devices that are common across nodes (same mount point).
+        
+        :return: Dictionary mapping mount points to list of devices
+        """
+        return self.common_mounts.copy()
+        
+    def get_node_storage(self, hostname: str) -> List[StorageDevice]:
+        """
+        Get storage devices for a specific node.
+        
+        :param hostname: Hostname to get storage for
+        :return: List of storage devices
+        """
+        return self.nodes.get(hostname, [])
+        
+    def get_all_nodes(self) -> List[str]:
+        """Get list of all node hostnames."""
+        return list(self.nodes.keys())
+        
+    def get_storage_summary(self) -> Dict[str, Any]:
+        """
+        Get summary statistics of storage across all nodes.
+        
+        :return: Summary dictionary
+        """
+        total_devices = sum(len(devices) for devices in self.nodes.values())
+        common_mounts = len(self.common_mounts)
+        
+        # Count device types
+        dev_type_counts = defaultdict(int)
+        fs_type_counts = defaultdict(int)
+        
+        for devices in self.nodes.values():
+            for device in devices:
+                dev_type_counts[device.dev_type] += 1
+                fs_type_counts[device.fs_type] += 1
+                
+        return {
+            'total_nodes': len(self.nodes),
+            'total_devices': total_devices,
+            'common_mount_points': common_mounts,
+            'device_types': dict(dev_type_counts),
+            'filesystem_types': dict(fs_type_counts)
+        }
+        
+    def filter_by_type(self, dev_type: str) -> Dict[str, List[StorageDevice]]:
+        """
+        Filter devices by device type (ssd, hdd, etc.).
+        
+        :param dev_type: Device type to filter by
+        :return: Dictionary mapping hostnames to filtered devices
+        """
+        filtered = {}
+        for hostname, devices in self.nodes.items():
+            filtered_devices = [d for d in devices if d.dev_type == dev_type]
+            if filtered_devices:
+                filtered[hostname] = filtered_devices
+        return filtered
+        
+    def filter_by_mount_pattern(self, pattern: str) -> Dict[str, List[StorageDevice]]:
+        """
+        Filter devices by mount point pattern.
+        
+        :param pattern: Pattern to match in mount points
+        :return: Dictionary mapping hostnames to filtered devices
+        """
+        filtered = {}
+        for hostname, devices in self.nodes.items():
+            filtered_devices = [d for d in devices if pattern in d.mount]
+            if filtered_devices:
+                filtered[hostname] = filtered_devices
+        return filtered
+        
+    def save_to_file(self, output_path: Path, format: str = 'yaml'):
+        """
+        Save resource graph to file.
+        
+        :param output_path: Path to save file
+        :param format: Output format ('yaml' or 'json')
+        """
+        # Convert to serializable format
+        data = {
+            'nodes': {},
+            'common_mounts': {},
+            'summary': self.get_storage_summary()
+        }
+        
+        # Add node data
+        for hostname, devices in self.nodes.items():
+            data['nodes'][hostname] = [device.to_dict() for device in devices]
+            
+        # Add common mounts
+        for mount_point, devices in self.common_mounts.items():
+            data['common_mounts'][mount_point] = [device.to_dict() for device in devices]
+            
+        # Save to file
+        with open(output_path, 'w') as f:
+            if format.lower() == 'json':
+                json.dump(data, f, indent=2)
+            else:  # Default to YAML
+                yaml.dump(data, f, default_flow_style=False)
+                
+        logger.success(f"Resource graph saved to {output_path}")
+        
+    def load_from_file(self, input_path: Path):
+        """
+        Load resource graph from file.
+        
+        :param input_path: Path to load file from
+        """
+        with open(input_path, 'r') as f:
+            if input_path.suffix.lower() == '.json':
+                data = json.load(f)
+            else:  # Default to YAML
+                data = yaml.safe_load(f)
+                
+        # Clear existing data
+        self.nodes = {}
+        self.common_mounts = {}
+        
+        # Load node data
+        for hostname, device_list in data.get('nodes', {}).items():
+            self.nodes[hostname] = []
+            for device_data in device_list:
+                device = StorageDevice(device_data, hostname)
+                self.nodes[hostname].append(device)
+                
+        # Reanalyze common mounts
+        self._analyze_common_mounts()
+        
+        logger.success(f"Resource graph loaded from {input_path}")
+        
+    def print_summary(self):
+        """Print a summary of the resource graph."""
+        summary = self.get_storage_summary()
+        
+        logger.info("=== Resource Graph Summary ===")
+        logger.info(f"Total nodes: {summary['total_nodes']}")
+        logger.info(f"Total storage devices: {summary['total_devices']}")
+        logger.info(f"Common mount points: {summary['common_mount_points']}")
+        
+        if summary['device_types']:
+            logger.info("Device types:")
+            for dev_type, count in summary['device_types'].items():
+                logger.info(f"  {dev_type}: {count}")
+                
+        if summary['filesystem_types']:
+            logger.info("Filesystem types:")
+            for fs_type, count in summary['filesystem_types'].items():
+                logger.info(f"  {fs_type}: {count}")
+                
+    def print_common_storage(self):
+        """Print information about common storage across nodes."""
+        if not self.common_mounts:
+            logger.warning("No common storage found across nodes")
+            return
+            
+        logger.info("=== Common Storage Across Nodes ===")
+        for mount_point, devices in self.common_mounts.items():
+            logger.info(f"\nMount point: {mount_point}")
+            logger.info(f"Available on {len(devices)} nodes:")
+            
+            for device in devices:
+                perf_info = ""
+                if device.randwrite_4k_bw != 'unknown' and device.seqwrite_1m_bw != 'unknown':
+                    perf_info = f" [4K: {device.randwrite_4k_bw}, 1M: {device.seqwrite_1m_bw}]"
+                    
+                logger.info(f"  {device.hostname}: {device.device} ({device.avail}, {device.dev_type}){perf_info}")
+                
+    def print_node_details(self, hostname: str):
+        """
+        Print detailed storage information for a specific node.
+        
+        :param hostname: Hostname to print details for
+        """
+        if hostname not in self.nodes:
+            logger.error(f"Node {hostname} not found in resource graph")
+            return
+            
+        devices = self.nodes[hostname]
+        logger.info(f"=== Storage Details for {hostname} ===")
+        logger.info(f"Total devices: {len(devices)}")
+        
+        for device in devices:
+            logger.info(f"\nDevice: {device.device}")
+            logger.info(f"  Mount: {device.mount}")
+            logger.info(f"  Type: {device.dev_type} ({device.fs_type})")
+            logger.info(f"  Available: {device.avail}")
+            logger.info(f"  Model: {device.model}")
+            logger.info(f"  Shared: {'Yes' if device.shared else 'No'}")
+            
+            if device.randwrite_4k_bw != 'unknown':
+                logger.info(f"  4K Random Write: {device.randwrite_4k_bw}")
+            if device.seqwrite_1m_bw != 'unknown':
+                logger.info(f"  1M Sequential Write: {device.seqwrite_1m_bw}")

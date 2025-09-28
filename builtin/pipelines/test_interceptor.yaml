@@ -1,5 +1,4 @@
-name: test_interceptor_pipeline
-env: chimaera
+name: test_interceptor_pipeline 
 
 # Define interceptors at the top level
 interceptors:

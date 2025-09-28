@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""
+Resource graph collection binary for Jarvis.
+Collects storage device information and performance metrics for the current machine.
+"""
+import json
+import os
+import sys
+import time
+import threading
+import tempfile
+import shutil
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+
+from jarvis_cd.util.argparse import ArgParse
+from jarvis_cd.shell import LocalExec, LocalExecInfo
+
+
+def get_mount_info() -> List[Dict[str, Any]]:
+    """Get information about mounted filesystems accessible to current user."""
+    mounts = []
+    
+    try:
+        # Read /proc/mounts for mount information
+        with open('/proc/mounts', 'r') as f:
+            mount_lines = f.readlines()
+    except Exception as e:
+        print(f"Error reading mount info: {e}", file=sys.stderr)
+        return mounts
+    
+    for line in mount_lines:
+        parts = line.strip().split()
+        if len(parts) < 6:
+            continue
+            
+        device, mount_point, fs_type, options = parts[0], parts[1], parts[2], parts[3]
+        
+        # Skip virtual filesystems and special mounts
+        if device.startswith('/dev/') and fs_type not in ['proc', 'sysfs', 'devpts', 'tmpfs', 'devtmpfs']:
+            # Check if current user has write access
+            try:
+                test_path = Path(mount_point)
+                if test_path.exists() and os.access(mount_point, os.W_OK):
+                    mount_info = {
+                        'device': device,
+                        'mount': mount_point,
+                        'fs_type': fs_type,
+                        'options': options.split(','),
+                        'needs_root': False
+                    }
+                    mounts.append(mount_info)
+            except Exception:
+                # If we can't access it, skip it
+                continue
+                
+    return mounts
+
+
+def get_device_info(device_path: str) -> Dict[str, Any]:
+    """Get detailed device information using system tools."""
+    info = {
+        'parent': None,
+        'model': None,
+        'uuid': None,
+        'dev_type': 'unknown',
+        'avail': None
+    }
+    
+    try:
+        # Get parent device (e.g., /dev/sdb1 -> /dev/sdb)
+        if device_path.endswith(tuple('0123456789')):
+            # Remove partition number
+            import re
+            info['parent'] = re.sub(r'\d+$', '', device_path)
+        else:
+            info['parent'] = device_path
+            
+        # Get filesystem UUID using blkid
+        try:
+            exec_info = LocalExecInfo(collect_output=True, hide_output=True)
+            result = LocalExec(f'blkid {device_path}', exec_info)
+            if result.exit_code.get('localhost', 1) == 0:
+                # Parse UUID from blkid output
+                import re
+                output = result.stdout.get('localhost', '')
+                uuid_match = re.search(r'UUID="([^"]+)"', output)
+                if uuid_match:
+                    info['uuid'] = uuid_match.group(1)
+        except Exception:
+            pass
+            
+        # Get device model using lsblk
+        try:
+            exec_info = LocalExecInfo(collect_output=True, hide_output=True)
+            result = LocalExec(f'lsblk -no MODEL {info["parent"]}', exec_info)
+            if result.exit_code.get('localhost', 1) == 0:
+                model = result.stdout.get('localhost', '').strip()
+                if model:
+                    info['model'] = model
+        except Exception:
+            pass
+            
+        # Determine device type (SSD vs HDD)
+        try:
+            parent_name = os.path.basename(info['parent'])
+            rotational_path = f'/sys/block/{parent_name}/queue/rotational'
+            if os.path.exists(rotational_path):
+                with open(rotational_path, 'r') as f:
+                    is_rotational = f.read().strip() == '1'
+                    info['dev_type'] = 'hdd' if is_rotational else 'ssd'
+        except Exception:
+            pass
+            
+    except Exception as e:
+        print(f"Error getting device info for {device_path}: {e}", file=sys.stderr)
+        
+    return info
+
+
+def get_filesystem_space(mount_point: str) -> Optional[str]:
+    """Get available space for filesystem."""
+    try:
+        stat = shutil.disk_usage(mount_point)
+        # Convert to human readable format
+        available_bytes = stat.free
+        
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if available_bytes < 1024.0:
+                return f"{available_bytes:.1f}{unit}"
+            available_bytes /= 1024.0
+        return f"{available_bytes:.1f}PB"
+    except Exception as e:
+        print(f"Error getting filesystem space for {mount_point}: {e}", file=sys.stderr)
+        return None
+
+
+def benchmark_storage(mount_point: str, duration: int = 25) -> Dict[str, str]:
+    """
+    Benchmark storage performance using dd commands.
+    
+    :param mount_point: Mount point to benchmark
+    :param duration: Duration in seconds to run benchmark
+    :return: Dictionary with benchmark results
+    """
+    results = {
+        '4k_randwrite_bw': 'unknown',
+        '1m_seqwrite_bw': 'unknown'
+    }
+    
+    try:
+        # Create a temporary test directory
+        test_dir = Path(mount_point) / f'jarvis_bench_{os.getpid()}'
+        test_dir.mkdir(exist_ok=True)
+        
+        def benchmark_4k_randwrite():
+            """Benchmark 4KB random write performance."""
+            try:
+                test_file = test_dir / 'test_4k_rand'
+                # Use dd with small block size for random-like behavior
+                cmd = f'dd if=/dev/zero of={test_file} bs=4K count=1000 oflag=direct,sync'
+                
+                start_time = time.time()
+                exec_info = LocalExecInfo(collect_output=True, hide_output=True)
+                result = LocalExec(cmd, exec_info)
+                end_time = time.time()
+                
+                if result.exit_code.get('localhost', 1) == 0:
+                    # Calculate bandwidth
+                    elapsed = end_time - start_time
+                    bytes_written = 4 * 1024 * 1000  # 4KB * 1000 blocks
+                    bw_bps = bytes_written / elapsed
+                    bw_mbps = bw_bps / (1024 * 1024)
+                    results['4k_randwrite_bw'] = f"{bw_mbps:.1f}mbps"
+                    
+                # Clean up
+                test_file.unlink(missing_ok=True)
+                
+            except Exception as e:
+                print(f"4K benchmark error: {e}", file=sys.stderr)
+                
+        def benchmark_1m_seqwrite():
+            """Benchmark 1MB sequential write performance."""
+            try:
+                test_file = test_dir / 'test_1m_seq'
+                # Use dd with large block size for sequential writes
+                cmd = f'dd if=/dev/zero of={test_file} bs=1M count=100 oflag=direct'
+                
+                start_time = time.time()
+                exec_info = LocalExecInfo(collect_output=True, hide_output=True)
+                result = LocalExec(cmd, exec_info)
+                end_time = time.time()
+                
+                if result.exit_code.get('localhost', 1) == 0:
+                    # Calculate bandwidth
+                    elapsed = end_time - start_time
+                    bytes_written = 1024 * 1024 * 100  # 1MB * 100 blocks
+                    bw_bps = bytes_written / elapsed
+                    bw_mbps = bw_bps / (1024 * 1024)
+                    results['1m_seqwrite_bw'] = f"{bw_mbps:.1f}mbps"
+                    
+                # Clean up
+                test_file.unlink(missing_ok=True)
+                
+            except Exception as e:
+                print(f"1M benchmark error: {e}", file=sys.stderr)
+        
+        # Run benchmarks in parallel threads
+        thread_4k = threading.Thread(target=benchmark_4k_randwrite)
+        thread_1m = threading.Thread(target=benchmark_1m_seqwrite)
+        
+        thread_4k.start()
+        thread_1m.start()
+        
+        # Wait for completion with timeout
+        thread_4k.join(timeout=duration//2 + 5)
+        thread_1m.join(timeout=duration//2 + 5)
+        
+        # Clean up test directory
+        test_dir.rmdir()
+        
+    except Exception as e:
+        print(f"Benchmark error for {mount_point}: {e}", file=sys.stderr)
+        
+    return results
+
+
+def collect_storage_resources(benchmark: bool = True) -> Dict[str, Any]:
+    """Collect all storage resources for this machine."""
+    # Get hostname using LocalExec
+    exec_info = LocalExecInfo(collect_output=True, hide_output=True)
+    hostname_result = LocalExec('hostname', exec_info)
+    hostname = hostname_result.stdout.get('localhost', 'unknown').strip()
+    
+    resources = {
+        'hostname': hostname,
+        'fs': []
+    }
+    
+    # Get mount information
+    mounts = get_mount_info()
+    
+    for mount_info in mounts:
+        device_path = mount_info['device']
+        mount_point = mount_info['mount']
+        
+        print(f"Collecting info for {device_path} mounted at {mount_point}", file=sys.stderr)
+        
+        # Get device details
+        device_info = get_device_info(device_path)
+        
+        # Get filesystem space
+        avail_space = get_filesystem_space(mount_point)
+        
+        # Combine all information
+        fs_entry = {
+            'device': device_path,
+            'mount': mount_point,
+            'fs_type': mount_info['fs_type'],
+            'avail': avail_space,
+            'needs_root': mount_info['needs_root'],
+            'shared': False,  # Will be determined by resource graph analysis
+            **device_info
+        }
+        
+        # Add performance benchmarks if requested
+        if benchmark:
+            print(f"Benchmarking {mount_point}...", file=sys.stderr)
+            bench_results = benchmark_storage(mount_point)
+            fs_entry.update(bench_results)
+        else:
+            fs_entry.update({
+                '4k_randwrite_bw': 'not_measured',
+                '1m_seqwrite_bw': 'not_measured'
+            })
+            
+        resources['fs'].append(fs_entry)
+        
+    return resources
+
+
+class ResourceGraphCLI(ArgParse):
+    """CLI for resource graph collection"""
+    
+    def define_options(self):
+        """Define command line options"""
+        self.add_menu('')
+        self.add_cmd('', keep_remainder=False)
+        self.add_args([
+            {
+                'name': 'no_benchmark',
+                'msg': 'Skip performance benchmarking',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'output',
+                'msg': 'Output file (default: stdout)',
+                'type': str,
+                'aliases': ['o']
+            },
+            {
+                'name': 'duration',
+                'msg': 'Benchmark duration in seconds',
+                'type': int,
+                'default': 25,
+                'aliases': ['d']
+            }
+        ])
+        
+    def main_menu(self):
+        """Handle the resource collection"""
+        try:
+            # Collect resources
+            benchmark = not self.kwargs.get('no_benchmark', False)
+            resources = collect_storage_resources(benchmark=benchmark)
+            
+            # Output results
+            output_data = json.dumps(resources, indent=2)
+            
+            output_file = self.kwargs.get('output')
+            if output_file:
+                with open(output_file, 'w') as f:
+                    f.write(output_data)
+                print(f"Resource data written to {output_file}", file=sys.stderr)
+            else:
+                print(output_data)
+                
+        except KeyboardInterrupt:
+            print("\nCollection interrupted by user", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error during collection: {e}", file=sys.stderr)
+            sys.exit(1)
+
+
+def main():
+    """Main entry point for resource collection."""
+    cli = ResourceGraphCLI()
+    cli.define_options()
+    cli.parse(sys.argv[1:])
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,17 @@
+name: test_simple_from_index
+pkgs:
+  - pkg_type: builtin.ior
+    pkg_name: ior_from_index
+    block: 16m
+    xfer: 512k
+    api: posix
+    write: true
+    read: false
+    fpp: false
+    reps: 1
+    nprocs: 1
+    ppn: 1
+    out: /tmp/ior_from_index.bin
+    do_dbg: false
+    dbg_port: 4000
+    interceptors: []

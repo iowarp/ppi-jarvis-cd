@@ -51,6 +51,7 @@ from .mpi_exec import (
 from .scp_exec import ScpExec, PscpExec
 from .exec_factory import Exec
 from .process import Kill, KillAll, Which, Mkdir, Rm, Chmod, Sleep, Echo
+from .resource_graph_exec import ResourceGraphExec
 
 __all__ = [
     # Enums and Info classes
@@ -71,5 +72,8 @@ __all__ = [
     'ScpExec', 'PscpExec',
     
     # Factory and utilities
-    'Exec', 'Kill', 'KillAll', 'Which', 'Mkdir', 'Rm', 'Chmod', 'Sleep', 'Echo'
+    'Exec', 'Kill', 'KillAll', 'Which', 'Mkdir', 'Rm', 'Chmod', 'Sleep', 'Echo',
+    
+    # Resource graph
+    'ResourceGraphExec'
 ]

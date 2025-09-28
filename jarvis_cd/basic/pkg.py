@@ -25,8 +25,8 @@ class Pkg:
         self.shared_dir = None
         self.private_dir = None
         self.env = {}
-        self.mod_env = {}
-        self.config = {}
+        self.mod_env = {}  # Will be initialized as a copy of env when needed
+        self.config = {'interceptors': {}}
         self.global_id = None
         self.pkg_id = None
         self.jarvis = Jarvis.get_instance()
@@ -51,7 +51,7 @@ class Pkg:
         """
         return []
         
-    def configure(self, **kwargs):
+    def _configure(self, **kwargs):
         """
         Override this method to handle package configuration.
         Takes as input a dictionary with keys determined from _configure_menu.
@@ -60,6 +60,72 @@ class Pkg:
         :param kwargs: Configuration parameters
         """
         self.update_config(kwargs, rebuild=False)
+        
+    def configure_menu(self):
+        """
+        Get the complete configuration menu including common parameters.
+        Returns the menu in argument dictionary format so parameters can be set from command line.
+        
+        :return: List of configuration option dictionaries
+        """
+        # Get package-specific menu
+        package_menu = self._configure_menu()
+        
+        # Add common parameters that all packages should have
+        common_menu = [
+            {
+                'name': 'do_dbg',
+                'msg': 'Enable debug mode',
+                'type': bool,
+                'default': False,
+            },
+            {
+                'name': 'dbg_port',
+                'msg': 'Debug port number',
+                'type': int,
+                'default': 1234,
+            },
+            {
+                'name': 'log_level',
+                'msg': 'Logging level',
+                'type': str,
+                'choices': ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                'default': 'INFO',
+            },
+            {
+                'name': 'timeout',
+                'msg': 'Operation timeout in seconds',
+                'type': int,
+                'default': 300,
+            },
+            {
+                'name': 'retry_count',
+                'msg': 'Number of retry attempts',
+                'type': int,
+                'default': 3,
+            },
+            {
+                'name': 'hide_output',
+                'msg': 'Hide command output',
+                'type': bool,
+                'default': False,
+            }
+        ]
+        
+        # Combine package-specific and common menus
+        return package_menu + common_menu
+        
+    def configure(self, **kwargs):
+        """
+        Public configuration method that calls internal _configure.
+        
+        :param kwargs: Configuration parameters
+        :return: Configuration dictionary
+        """
+        # Call the internal configuration method
+        self._configure(**kwargs)
+        
+        return self.config.copy()
         
     def update_config(self, new_config: Dict[str, Any], rebuild: bool = True):
         """
@@ -70,8 +136,8 @@ class Pkg:
         """
         self.config.update(new_config)
         
-        if rebuild and hasattr(self, 'configure'):
-            self.configure(**self.config)
+        if rebuild and hasattr(self, '_configure'):
+            self._configure(**self.config)
             
     def start(self):
         """
@@ -118,6 +184,8 @@ class Pkg:
         :param env_track_dict: Dictionary of environment variables to track
         """
         self.env.update(env_track_dict)
+        # Ensure mod_env is a proper copy of env, not a reference
+        self.mod_env = self.env.copy()
         self.mod_env.update(env_track_dict)
         
     def prepend_env(self, env_name: str, val: str):
@@ -132,6 +200,10 @@ class Pkg:
             self.env[env_name] = f"{val}:{current_val}"
         else:
             self.env[env_name] = val
+            
+        # Ensure mod_env is a copy, not a reference
+        if not self.mod_env or self.mod_env is self.env:
+            self.mod_env = self.env.copy()
             
         # Also update mod_env
         current_mod_val = self.mod_env.get(env_name, '')
@@ -148,6 +220,9 @@ class Pkg:
         :param val: Value to set
         """
         self.env[env_name] = val
+        # Ensure mod_env is a copy, not a reference
+        if not self.mod_env or self.mod_env is self.env:
+            self.mod_env = self.env.copy()
         self.mod_env[env_name] = val
         
     def find_library(self, library_name: str) -> Optional[str]:
@@ -185,6 +260,40 @@ class Pkg:
                 return full_path
                 
         return None
+        
+    def add_interceptor(self, pkg_name: str, interceptor_instance):
+        """
+        Add an interceptor package instance to this package's configuration.
+        Interceptors are stored as a dictionary mapping pkg_name to constructed package instances.
+        
+        :param pkg_name: Name/identifier for the interceptor package
+        :param interceptor_instance: Constructed interceptor package instance
+        """
+        if not isinstance(self.config.get('interceptors'), dict):
+            self.config['interceptors'] = {}
+            
+        self.config['interceptors'][pkg_name] = interceptor_instance
+        
+    def get_interceptors(self) -> Dict[str, Any]:
+        """
+        Get all interceptors associated with this package.
+        
+        :return: Dictionary mapping interceptor names to instances
+        """
+        return self.config.get('interceptors', {})
+        
+    def remove_interceptor(self, pkg_name: str) -> bool:
+        """
+        Remove an interceptor from this package's configuration.
+        
+        :param pkg_name: Name/identifier of the interceptor to remove
+        :return: True if interceptor was removed, False if not found
+        """
+        interceptors = self.config.get('interceptors', {})
+        if pkg_name in interceptors:
+            del interceptors[pkg_name]
+            return True
+        return False
 
 
 class Service(Pkg):
@@ -253,7 +362,7 @@ class Interceptor(Pkg):
         """
         pass
         
-    def configure(self, **kwargs):
+    def _configure(self, **kwargs):
         """
         Configure interceptor.
         Interceptors typically only modify environment variables.
@@ -288,6 +397,201 @@ class Interceptor(Pkg):
         :return: Status string
         """
         return "active" if 'LD_PRELOAD' in self.mod_env else "inactive"
+        
+    def log(self, message):
+        """
+        Simple logging method for interceptors.
+        
+        :param message: Message to log
+        """
+        print(f"[{self.__class__.__name__}] {message}")
+
+
+class SimplePackage(Pkg):
+    """
+    A simple package class that supports interceptors.
+    Provides basic functionality for packages that need interceptor support.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.ppl = None  # Will be set by the pipeline when loading
+        
+    def _init(self):
+        """
+        Initialize SimplePackage-specific variables.
+        Override in subclasses.
+        """
+        pass
+        
+    def _configure_menu(self):
+        """
+        Create a CLI menu for the configurator method.
+        Includes the interceptors parameter.
+        
+        :return: List of configuration option dictionaries
+        """
+        return [
+            {
+                'name': 'interceptors',
+                'msg': 'List of interceptor package names to apply',
+                'type': list,
+                'default': [],
+                'args': [
+                    {
+                        'name': 'interceptor_name',
+                        'msg': 'Name of an interceptor package',
+                        'type': str,
+                    }
+                ]
+            }
+        ]
+        
+    def _configure(self, **kwargs):
+        """
+        Configure SimplePackage with interceptor support.
+        Interceptors will be processed later during start().
+        
+        :param kwargs: Configuration parameters
+        """
+        # Call parent configuration
+        super()._configure(**kwargs)
+        
+    def start(self):
+        """
+        Start the package, processing interceptors first.
+        Override this method in subclasses to implement actual start logic.
+        """
+        # Process interceptors before starting
+        self._process_interceptors()
+        
+        # Call the actual start implementation
+        self._start()
+        
+    def _start(self):
+        """
+        Override this method in subclasses to implement actual start logic.
+        This is called after interceptors have been processed.
+        """
+        pass
+        
+    def _process_interceptors(self):
+        """
+        Process the interceptors list during package start.
+        Loads interceptor packages and calls their modify_env() methods.
+        Ensures mod_env is a copy of env for isolation.
+        """
+        # Ensure mod_env is a copy (not pointer) to env for isolation
+        if not self.mod_env or self.mod_env is self.env:
+            self.mod_env = self.env.copy()
+        
+        # Get interceptors list from config
+        interceptors_list = self.config.get('interceptors', [])
+        
+        if not interceptors_list:
+            return
+            
+        from jarvis_cd.core.config import load_class, Jarvis
+        jarvis = Jarvis.get_instance()
+        
+        for interceptor_name in interceptors_list:
+            try:
+                # Load interceptor package dynamically
+                interceptor_instance = self._load_interceptor_package(interceptor_name)
+                if not interceptor_instance:
+                    self.log(f"Warning: Could not load interceptor '{interceptor_name}'")
+                    continue
+                    
+                # Verify it's an interceptor and has modify_env method
+                if not hasattr(interceptor_instance, 'modify_env'):
+                    self.log(f"Warning: Package '{interceptor_name}' does not have modify_env() method")
+                    continue
+                    
+                # Call modify_env to update the environment
+                self.log(f"Applying interceptor: {interceptor_name}")
+                
+                # Set the interceptor's environment to match ours
+                if hasattr(interceptor_instance, 'env'):
+                    interceptor_instance.env = self.env.copy()
+                if hasattr(interceptor_instance, 'mod_env'):
+                    interceptor_instance.mod_env = self.mod_env
+                    
+                # Call modify_env to update our environment
+                interceptor_instance.modify_env()
+                
+                # Copy back any changes to our mod_env
+                if hasattr(interceptor_instance, 'mod_env'):
+                    self.mod_env.update(interceptor_instance.mod_env)
+                
+            except Exception as e:
+                self.log(f"Error processing interceptor '{interceptor_name}': {e}")
+                
+    def _load_interceptor_package(self, interceptor_name: str):
+        """
+        Load an interceptor package by name.
+        
+        :param interceptor_name: Name of the interceptor package to load
+        :return: Interceptor package instance or None if not found
+        """
+        try:
+            from jarvis_cd.core.config import load_class, Jarvis
+            jarvis = Jarvis.get_instance()
+            
+            # For now, assume builtin interceptors - can be extended later
+            pkg_type = f"builtin.{interceptor_name}"
+            
+            # Parse package specification
+            import_parts = pkg_type.split('.')
+            repo_name = import_parts[0]
+            pkg_name = import_parts[1]
+            
+            # Determine class name (convert snake_case to PascalCase)
+            class_name = ''.join(word.capitalize() for word in pkg_name.split('_'))
+            
+            # Load class
+            if repo_name == 'builtin':
+                repo_path = str(jarvis.jarvis_config.get_builtin_repo_path())
+            else:
+                # Find repo path in registered repos
+                repo_path = None
+                for registered_repo in jarvis.jarvis_config.repos['repos']:
+                    if Path(registered_repo).name == repo_name:
+                        repo_path = registered_repo
+                        break
+                        
+                if not repo_path:
+                    self.log(f"Repository not found for interceptor: {repo_name}")
+                    return None
+                    
+            import_str = f"{repo_name}.{pkg_name}.pkg"
+            pkg_class = load_class(import_str, repo_path, class_name)
+            
+            if not pkg_class:
+                self.log(f"Interceptor class not found: {class_name} in {import_str}")
+                return None
+                
+            # Create instance
+            interceptor_instance = pkg_class()
+            
+            # Set basic attributes
+            if hasattr(interceptor_instance, 'pkg_id'):
+                interceptor_instance.pkg_id = interceptor_name
+            if hasattr(interceptor_instance, 'jarvis'):
+                interceptor_instance.jarvis = jarvis
+                
+            return interceptor_instance
+            
+        except Exception as e:
+            self.log(f"Error loading interceptor '{interceptor_name}': {e}")
+            return None
+                
+    def log(self, message):
+        """
+        Simple logging method. Override in subclasses for more sophisticated logging.
+        
+        :param message: Message to log
+        """
+        print(f"[{self.__class__.__name__}] {message}")
 
 
 # Example IOR application implementation (matches the specification)
@@ -380,7 +684,7 @@ class Ior(Application):
             },
         ]
 
-    def configure(self, **kwargs):
+    def _configure(self, **kwargs):
         """
         Converts the Jarvis configuration to application-specific configuration.
         

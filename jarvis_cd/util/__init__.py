@@ -9,10 +9,13 @@ This module provides utility classes including:
 
 from .hostfile import Hostfile
 from .logger import Logger, Color, logger
+from .resource_graph import ResourceGraph, StorageDevice
 
 __all__ = [
     'Hostfile',
     'Logger',
     'Color', 
-    'logger'
+    'logger',
+    'ResourceGraph',
+    'StorageDevice'
 ]
