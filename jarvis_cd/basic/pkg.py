@@ -122,6 +122,9 @@ class Pkg:
         :param kwargs: Configuration parameters
         :return: Configuration dictionary
         """
+        # Update configuration first
+        self.update_config(kwargs, rebuild=False)
+        
         # Call the internal configuration method
         self._configure(**kwargs)
         

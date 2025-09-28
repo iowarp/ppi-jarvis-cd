@@ -193,7 +193,6 @@ class Adios2GrayScott(Application):
         :param kwargs: Configuration parameters for this pkg.
         :return: None
         """
-        self.update_config(kwargs, rebuild=False)
         if self.config['out_file'] is None:
             adios_dir = os.path.join(self.shared_dir, 'gray-scott-output')
             self.config['out_file'] = os.path.join(adios_dir,

@@ -9,10 +9,11 @@ This guide explains how to develop custom packages for Jarvis-CD, including the 
 3. [Abstract Methods](#abstract-methods)
 4. [Environment Variables](#environment-variables)
 5. [Configuration](#configuration)
-6. [Execution System](#execution-system)
-7. [Interceptor Development](#interceptor-development)
-8. [Implementation Examples](#implementation-examples)
-9. [Best Practices](#best-practices)
+6. [Package Directory Structure](#package-directory-structure)
+7. [Execution System](#execution-system)
+8. [Interceptor Development](#interceptor-development)
+9. [Implementation Examples](#implementation-examples)
+10. [Best Practices](#best-practices)
 
 ## Repository Structure
 
@@ -49,9 +50,47 @@ jarvis repo list
 
 ## Package Types
 
-Jarvis-CD provides three base classes for different types of packages:
+Jarvis-CD provides several base classes for different types of packages:
 
-### 1. Application (jarvis_cd.basic.pkg.Application)
+### 1. SimplePackage (jarvis_cd.basic.pkg.SimplePackage)
+
+**Most common base class** - Use this for packages that need interceptor support. Most builtin packages inherit from this.
+
+```python
+from jarvis_cd.basic.pkg import SimplePackage
+
+class MyPackage(SimplePackage):
+    def _init(self):
+        # Initialize variables
+        self.my_var = None
+    
+    def _configure_menu(self):
+        # Get base menu from SimplePackage (includes interceptors)
+        base_menu = super()._configure_menu()
+        
+        # Add package-specific menu items
+        package_menu = [
+            {
+                'name': 'input_file',
+                'msg': 'Input file path',
+                'type': str,
+                'default': 'input.dat'
+            }
+        ]
+        
+        return base_menu + package_menu
+    
+    def _configure(self, **kwargs):
+        # Configure the package - update_config() called automatically
+        
+    def start(self):
+        # Process interceptors automatically
+        self._process_interceptors()
+        # Run the package
+        pass
+```
+
+### 2. Application (jarvis_cd.basic.pkg.Application)
 
 For applications that run and complete automatically (e.g., benchmarks, data processing tools).
 
@@ -59,6 +98,23 @@ For applications that run and complete automatically (e.g., benchmarks, data pro
 from jarvis_cd.basic.pkg import Application
 
 class MyApp(Application):
+    def _init(self):
+        # Initialize variables
+        self.output_file = None
+        
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'output_file',
+                'msg': 'Output file path',
+                'type': str,
+                'default': 'output.dat'
+            }
+        ]
+    
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
+    
     def start(self):
         # Run the application
         pass
@@ -68,7 +124,7 @@ class MyApp(Application):
         pass
 ```
 
-### 2. Service (jarvis_cd.basic.pkg.Service)
+### 3. Service (jarvis_cd.basic.pkg.Service)
 
 For long-running services that need manual stopping (e.g., databases, web servers).
 
@@ -76,6 +132,23 @@ For long-running services that need manual stopping (e.g., databases, web server
 from jarvis_cd.basic.pkg import Service
 
 class MyService(Service):
+    def _init(self):
+        # Initialize variables
+        self.daemon_process = None
+        
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'port',
+                'msg': 'Service port',
+                'type': int,
+                'default': 8080
+            }
+        ]
+    
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
+    
     def start(self):
         # Start the service
         pass
@@ -89,7 +162,7 @@ class MyService(Service):
         return "running"
 ```
 
-### 3. Interceptor (jarvis_cd.basic.pkg.Interceptor)
+### 4. Interceptor (jarvis_cd.basic.pkg.Interceptor)
 
 For packages that modify environment variables to intercept system calls (e.g., profiling tools, I/O interceptors). Interceptors work by modifying `LD_PRELOAD` and other environment variables to inject custom libraries into target applications.
 
@@ -97,6 +170,10 @@ For packages that modify environment variables to intercept system calls (e.g., 
 from jarvis_cd.basic.pkg import Interceptor
 
 class MyInterceptor(Interceptor):
+    def _init(self):
+        # Initialize variables
+        self.interceptor_lib = None
+        
     def _configure_menu(self):
         return [
             {
@@ -107,8 +184,8 @@ class MyInterceptor(Interceptor):
             }
         ]
     
-    def configure(self, **kwargs):
-        self.update_config(kwargs, rebuild=False)
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
         
         # Find the interceptor library
         lib_path = self.find_library('interceptor')
@@ -144,13 +221,14 @@ All packages inherit from the base `Pkg` class and can override these methods:
 #### `_init(self)`
 **Purpose**: Initialize package-specific variables  
 **Called**: During package instantiation  
-**Notes**: Don't assume `self.config` is initialized
+**Notes**: Don't assume `self.config` is initialized. Set default values to None.
 
 ```python
 def _init(self):
     """Initialize package-specific variables"""
     self.my_variable = None
     self.start_time = None
+    self.output_file = None
 ```
 
 #### `_configure_menu(self) -> List[Dict[str, Any]]`
@@ -168,27 +246,51 @@ def _configure_menu(self):
             'type': str,
             'default': 'default_value',
             'choices': ['option1', 'option2'],  # Optional
-            'aliases': ['alias1', 'alias2'],    # Optional
+            'args': [],                         # For nested parameters
         }
     ]
 ```
 
+**Important**: If inheriting from `SimplePackage`, call the parent method:
+```python
+def _configure_menu(self):
+    """Define configuration options"""
+    # Get base menu from SimplePackage (includes interceptors)
+    base_menu = super()._configure_menu()
+    
+    # Add package-specific menu items
+    package_menu = [
+        {
+            'name': 'my_param',
+            'msg': 'My parameter description',
+            'type': str,
+            'default': 'default_value'
+        }
+    ]
+    
+    return base_menu + package_menu
+```
+
 ### Lifecycle Methods
 
-#### `configure(self, **kwargs)`
+#### `_configure(self, **kwargs)`
 **Purpose**: Handle package configuration  
 **Called**: When package is configured via CLI or programmatically  
-**Use**: Set up environment variables with `self.env` and `self.mod_env`
+**Use**: Set up environment variables and generate application-specific configuration files
+**Note**: Override `_configure()`, not `configure()`. The public `configure()` method automatically calls `self.update_config()` before calling `_configure()`.
 
 ```python
-def configure(self, **kwargs):
+def _configure(self, **kwargs):
     """Configure the package"""
-    self.update_config(kwargs, rebuild=False)
+    # No need to call self.update_config() - it's done automatically
     
     # Set environment variables
     if self.config['custom_path']:
         self.setenv('MY_APP_PATH', self.config['custom_path'])
         self.prepend_env('PATH', self.config['custom_path'] + '/bin')
+    
+    # Generate application-specific configuration files
+    # This is where you create config files, validate parameters, etc.
 ```
 
 #### `start(self)`
@@ -307,14 +409,14 @@ def start(self):
     Exec('make', LocalExecInfo(env=self.mod_env)).run()
 ```
 
-### Usage in configure()
+### Usage in _configure()
 
-**Always use environment methods in the `configure()` method:**
+**Always use environment methods in the `_configure()` method:**
 
 ```python
-def configure(self, **kwargs):
+def _configure(self, **kwargs):
     """Configure package and set environment"""
-    self.update_config(kwargs, rebuild=False)
+    # No need to call self.update_config() - it's done automatically
     
     # Set application-specific environment (will be propagated to later packages)
     if self.config['install_path']:
@@ -350,6 +452,238 @@ def start(self):
     num_procs = self.config['nprocs']
     debug_mode = self.config['debug']
 ```
+
+## Package Directory Structure
+
+Jarvis-CD provides three key directories that packages can use for organizing files, templates, and configuration:
+
+### `self.pkg_dir` - Package Source Directory
+
+The **package directory** contains the package's source code, templates, and static configuration files.
+
+- **Location**: Points to the package's source directory (e.g., `builtin/builtin/my_package/`)
+- **Purpose**: Access template files, default configurations, and package resources
+- **Usage**: Read-only access to package-specific resources
+- **Common subdirectories**: 
+  - `config/` - Template configuration files
+  - `templates/` - File templates
+  - `scripts/` - Helper scripts
+
+```python
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Copy template configuration from package source
+    template_path = f'{self.pkg_dir}/config/app_config.xml'
+    output_path = f'{self.shared_dir}/app_config.xml'
+    
+    # Copy and customize template file
+    self.copy_template_file(template_path, output_path, 
+                           replacements={'PORT': self.config['port']})
+```
+
+#### Example Package Structure
+```
+my_package/
+├── pkg.py                    # Main package implementation
+├── config/                   # Template configurations
+│   ├── app.xml              # Application config template
+│   ├── logging.conf         # Logging configuration
+│   └── defaults.yaml        # Default settings
+├── templates/               # File templates
+│   ├── Dockerfile.j2        # Container template
+│   └── systemd.service      # Service template
+└── scripts/                 # Helper scripts
+    ├── setup.sh             # Installation script
+    └── health_check.py      # Health monitoring
+```
+
+### `self.shared_dir` - Runtime Configuration Directory
+
+The **shared directory** is where packages store generated configuration files that are accessible across the pipeline.
+
+- **Location**: Pipeline-specific directory (e.g., `/tmp/jarvis_pipeline_123/shared/`)
+- **Purpose**: Store generated configurations, runtime files, and inter-package communication
+- **Usage**: Read-write access for generated files
+- **Accessibility**: Available to all packages in the pipeline
+- **Persistence**: Exists for the duration of the pipeline
+
+```python
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Generate runtime configuration files in shared directory
+    self.config_file = f'{self.shared_dir}/database.conf'
+    self.log_file = f'{self.shared_dir}/app.log'
+    
+    # Create configuration with runtime values
+    config_content = f"""
+    database_port={self.config['port']}
+    data_directory={self.config['data_dir']}
+    log_file={self.log_file}
+    """
+    
+    with open(self.config_file, 'w') as f:
+        f.write(config_content)
+
+def start(self):
+    # Use configuration file from shared directory
+    cmd = ['my_app', '--config', self.config_file]
+    Exec(' '.join(cmd), LocalExecInfo(env=self.mod_env)).run()
+```
+
+#### Typical Shared Directory Contents
+```
+shared/
+├── adios2.xml              # Generated ADIOS2 configuration
+├── database.conf           # Database configuration
+├── hostfile                # MPI hostfile
+├── pipeline_env.yaml       # Environment variables
+└── app_logs/               # Application logs
+    ├── app1.log
+    └── app2.log
+```
+
+### `self.config_dir` - Package Instance Configuration
+
+The **config directory** is a package-specific directory for storing instance-specific configuration files.
+
+- **Location**: Package-specific directory within the pipeline (e.g., `/tmp/jarvis_pipeline_123/packages/my_package/`)
+- **Purpose**: Store package-specific runtime configurations and temporary files
+- **Usage**: Read-write access for package-specific files
+- **Isolation**: Private to each package instance
+- **Cleanup**: Can be cleaned when package is stopped or reset
+
+```python
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Create package-specific configuration
+    param_file = f'{self.config_dir}/simulation.param'
+    
+    # Generate instance-specific parameter file
+    with open(param_file, 'w') as f:
+        f.write(f"""
+        simulation_steps={self.config['steps']}
+        output_frequency={self.config['output_freq']}
+        mesh_size={self.config['mesh_size']}
+        """)
+    
+    self.param_file = param_file
+
+def start(self):
+    # Use package-specific configuration
+    cmd = ['simulator', '--params', self.param_file]
+    Exec(' '.join(cmd), MpiExecInfo(
+        env=self.mod_env,
+        hostfile=self.jarvis.hostfile,
+        nprocs=self.config['nprocs']
+    )).run()
+```
+
+### Best Practices for Directory Usage
+
+#### 1. Template Files in pkg_dir
+```python
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Use pkg_dir for accessing template files
+    template_xml = f'{self.pkg_dir}/config/adios2_template.xml'
+    runtime_xml = f'{self.shared_dir}/adios2.xml'
+    
+    # Copy and customize template
+    self.copy_template_file(template_xml, runtime_xml, 
+                           replacements={
+                               'ENGINE_TYPE': self.config['engine'],
+                               'BUFFER_SIZE': str(self.config['buffer_size'])
+                           })
+```
+
+#### 2. Runtime Files in shared_dir
+```python
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Store generated files that other packages might need
+    self.hostfile_path = f'{self.shared_dir}/mpi_hostfile'
+    self.env_file = f'{self.shared_dir}/app_environment.sh'
+    
+    # Generate hostfile for MPI applications
+    with open(self.hostfile_path, 'w') as f:
+        for host in self.jarvis.hostfile:
+            f.write(f"{host}\n")
+```
+
+#### 3. Instance-specific Files in config_dir
+```python
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Create package-specific working directory
+    self.work_dir = f'{self.config_dir}/workfiles'
+    os.makedirs(self.work_dir, exist_ok=True)
+    
+    # Package-specific temporary files
+    self.temp_input = f'{self.config_dir}/input.tmp'
+    self.temp_output = f'{self.config_dir}/output.tmp'
+```
+
+#### 4. File Organization Example
+```python
+class MySimulation(Application):
+    """Scientific simulation package"""
+    
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
+        
+        # 1. Access template from package source
+        input_template = f'{self.pkg_dir}/config/simulation_input.template'
+        
+        # 2. Generate shared configuration (accessible to other packages)
+        self.shared_config = f'{self.shared_dir}/simulation.xml'
+        self.copy_template_file(input_template, self.shared_config, 
+                               replacements={'TIME_STEPS': str(self.config['steps'])})
+        
+        # 3. Create package-specific files
+        self.work_dir = f'{self.config_dir}/simulation_work'
+        os.makedirs(self.work_dir, exist_ok=True)
+        
+        # 4. Set environment pointing to configurations
+        self.setenv('SIMULATION_CONFIG', self.shared_config)
+        self.setenv('SIMULATION_WORK_DIR', self.work_dir)
+```
+
+#### 5. Cleanup Considerations
+```python
+def clean(self):
+    """Clean package data"""
+    # Clean package-specific files
+    if os.path.exists(self.config_dir):
+        Rm(self.config_dir, LocalExecInfo()).run()
+    
+    # Clean shared files this package created
+    shared_files = [
+        f'{self.shared_dir}/my_app_config.xml',
+        f'{self.shared_dir}/my_app.log'
+    ]
+    for file_path in shared_files:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+```
+
+### Directory Lifecycle
+
+1. **Package Load**: Jarvis sets `pkg_dir`, `shared_dir`, and `config_dir`
+2. **Configuration**: Package uses these directories in `_configure()`
+3. **Execution**: Applications read from generated configuration files
+4. **Cleanup**: Package cleans up generated files in `clean()`
+
+This directory structure enables packages to:
+- **Separate concerns**: Templates vs. runtime vs. instance-specific files
+- **Share configurations**: Between packages through shared_dir
+- **Maintain isolation**: Package-specific files in config_dir
+- **Enable reusability**: Template files in pkg_dir can be reused
 
 ## Execution System
 
@@ -542,8 +876,8 @@ class PerfProfiler(Interceptor):
             }
         ]
     
-    def configure(self, **kwargs):
-        self.update_config(kwargs, rebuild=False)
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
         
         # Try to find the profiler library
         profiler_lib = self.find_library(self.config['profiler_lib'])
@@ -615,8 +949,8 @@ class IOTracer(Interceptor):
             }
         ]
     
-    def configure(self, **kwargs):
-        self.update_config(kwargs, rebuild=False)
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
         
         # Find the I/O tracing library
         io_lib = self.find_library('iotrace')
@@ -688,8 +1022,8 @@ class MemoryDebugger(Interceptor):
             }
         ]
     
-    def configure(self, **kwargs):
-        self.update_config(kwargs, rebuild=False)
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
         
         tool = self.config['tool']
         
@@ -768,8 +1102,8 @@ class MemoryDebugger(Interceptor):
 #### 1. Always Check Library Availability
 
 ```python
-def configure(self, **kwargs):
-    self.update_config(kwargs, rebuild=False)
+def _configure(self, **kwargs):
+    # Configuration automatically updated
     
     # Always verify library exists before using
     lib_path = self.find_library('myinterceptor')
@@ -782,8 +1116,8 @@ def configure(self, **kwargs):
 #### 2. Provide Fallback Options
 
 ```python
-def configure(self, **kwargs):
-    self.update_config(kwargs, rebuild=False)
+def _configure(self, **kwargs):
+    # Configuration automatically updated
     
     # Try multiple library names/versions
     for lib_name in ['libprofiler_v2', 'libprofiler', 'profiler']:
@@ -818,8 +1152,8 @@ def modify_env(self):
 #### 4. Provide Configuration Validation
 
 ```python
-def configure(self, **kwargs):
-    self.update_config(kwargs, rebuild=False)
+def _configure(self, **kwargs):
+    # Configuration automatically updated
     
     # Validate configuration
     if self.config['sample_rate'] <= 0:
@@ -888,9 +1222,9 @@ class SimpleBench(Application):
             }
         ]
     
-    def configure(self, **kwargs):
+    def _configure(self, **kwargs):
         """Configure the benchmark"""
-        self.update_config(kwargs, rebuild=False)
+        # Configuration automatically updated - no need for self.update_config()
         
         # Set up output directory
         os.makedirs(self.config['output_dir'], exist_ok=True)
@@ -952,9 +1286,9 @@ class ParallelApp(Application):
             }
         ]
     
-    def configure(self, **kwargs):
+    def _configure(self, **kwargs):
         """Configure the application"""
-        self.update_config(kwargs, rebuild=False)
+        # Configuration automatically updated
         
         # Set MPI environment
         self.setenv('PARALLEL_APP_INPUT', self.config['input_file'])
@@ -1016,9 +1350,9 @@ class Database(Service):
             }
         ]
     
-    def configure(self, **kwargs):
+    def _configure(self, **kwargs):
         """Configure database"""
-        self.update_config(kwargs, rebuild=False)
+        # Configuration automatically updated
         
         self.data_dir = self.config['data_dir']
         self.pid_file = os.path.join(self.data_dir, 'mydb.pid')
@@ -1105,9 +1439,9 @@ class Profiler(Interceptor):
             }
         ]
     
-    def configure(self, **kwargs):
+    def _configure(self, **kwargs):
         """Configure profiler"""
-        self.update_config(kwargs, rebuild=False)
+        # Configuration automatically updated
         
         self.profiler_lib = self.config['profiler_path']
         
@@ -1136,9 +1470,9 @@ class Profiler(Interceptor):
 ### 1. Use Environment Variables Correctly
 
 ```python
-# ✅ Good - Use in configure()
-def configure(self, **kwargs):
-    self.update_config(kwargs, rebuild=False)
+# ✅ Good - Use in _configure()
+def _configure(self, **kwargs):
+    # Configuration automatically updated
     self.setenv('MY_APP_HOME', self.config['install_path'])
 
 # ✅ Good - Use mod_env in execution
@@ -1153,8 +1487,8 @@ def start(self):
 ### 2. Handle File Paths Properly
 
 ```python
-def configure(self, **kwargs):
-    self.update_config(kwargs, rebuild=False)
+def _configure(self, **kwargs):
+    # Configuration automatically updated
     
     # Expand environment variables in paths
     output_dir = os.path.expandvars(self.config['output_dir'])

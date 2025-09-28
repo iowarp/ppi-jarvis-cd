@@ -60,7 +60,6 @@ class PostWrf(Application):
         :param kwargs: Configuration parameters for this pkg.
         :return: None
         """
-        self.update_config(kwargs, rebuild=False)
         output_location = self.config['wrf_output']
         if output_location[-1] != '/':
             output_location += '/'
