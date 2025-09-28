@@ -59,9 +59,18 @@ class JarvisConfig:
         # Save configuration
         self.save_config(default_config)
         
-        # Initialize empty repos configuration
+        # Initialize repos configuration with builtin repo
+        builtin_repo_path = self.get_builtin_repo_path()
+        
+        # Ensure we use absolute path and handle case where builtin might not be installed yet
+        if builtin_repo_path.exists():
+            builtin_repo_path_str = str(builtin_repo_path.absolute())
+        else:
+            # Use the expected location even if it doesn't exist yet
+            builtin_repo_path_str = str((self.jarvis_root / 'builtin').absolute())
+            
         default_repos = {
-            'repos': []
+            'repos': [builtin_repo_path_str]
         }
         self.save_repos(default_repos)
         
@@ -210,6 +219,15 @@ class JarvisConfig:
         config['current_pipeline'] = pipeline_name
         self.save_config(config)
         
+    def get_current_pipeline(self) -> Optional[str]:
+        """Get the name of the current active pipeline"""
+        return self.config.get('current_pipeline')
+        
+    def get_pipelines_dir(self) -> Path:
+        """Get the directory where all pipelines are stored"""
+        config_dir = Path(self.config['config_dir'])
+        return config_dir / 'pipelines'
+        
     def get_builtin_repo_path(self) -> Path:
         """Get path to builtin repository"""
         # First check if builtin repo is installed to ~/.jarvis/builtin
@@ -259,8 +277,14 @@ class JarvisConfig:
         
     def _check_package_exists(self, repo_path: str, repo_name: str, pkg_name: str) -> bool:
         """Check if a package exists in a repository"""
+        # Try both package.py and pkg.py (legacy naming)
         package_file = Path(repo_path) / repo_name / pkg_name / 'package.py'
-        return package_file.exists()
+        if package_file.exists():
+            return True
+            
+        # Check for legacy pkg.py naming  
+        legacy_package_file = Path(repo_path) / repo_name / pkg_name / 'pkg.py'
+        return legacy_package_file.exists()
         
     def is_initialized(self) -> bool:
         """Check if Jarvis has been initialized"""
@@ -280,10 +304,90 @@ def load_class(import_str: str, path: str, class_name: str):
     import sys
     
     fullpath = os.path.join(path, import_str.replace('.', '/') + '.py')
+    
+    # If the exact path doesn't exist, try replacing the last component
     if not os.path.exists(fullpath):
-        return None
+        # Handle legacy naming: if looking for "package.py", try "pkg.py"
+        if import_str.endswith('.package'):
+            legacy_import_str = import_str[:-8] + '.pkg'  # Replace .package with .pkg
+            fullpath = os.path.join(path, legacy_import_str.replace('.', '/') + '.py')
+            if os.path.exists(fullpath):
+                import_str = legacy_import_str
+            else:
+                return None
+        else:
+            return None
+    
     sys.path.insert(0, path)
-    module = __import__(import_str, fromlist=[class_name])
-    cls = getattr(module, class_name)
-    sys.path.pop(0)
-    return cls
+    try:
+        module = __import__(import_str, fromlist=[class_name])
+        cls = getattr(module, class_name, None)
+        return cls
+    except (ImportError, AttributeError):
+        return None
+    finally:
+        sys.path.pop(0)
+
+
+class Jarvis:
+    """
+    Singleton class that provides global access to Jarvis configuration.
+    Contains directories, hostfile, and other context needed by packages.
+    """
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        """Initialize singleton (only happens once)"""
+        if self._initialized:
+            return
+            
+        self.config_dir = None
+        self.private_dir = None  
+        self.shared_dir = None
+        self.hostfile = None
+        self.jarvis_config = None
+        self._initialized = True
+    
+    @classmethod
+    def initialize(cls, jarvis_config: JarvisConfig, config_dir: str = None, 
+                   private_dir: str = None, shared_dir: str = None):
+        """
+        Initialize the Jarvis singleton with configuration.
+        
+        :param jarvis_config: JarvisConfig instance
+        :param config_dir: Config directory path  
+        :param private_dir: Private directory path
+        :param shared_dir: Shared directory path
+        """
+        instance = cls()
+        instance.jarvis_config = jarvis_config
+        
+        # Use defaults if not provided
+        if config_dir is None:
+            config_dir = str(jarvis_config.jarvis_root)
+        if private_dir is None:
+            private_dir = str(jarvis_config.jarvis_root / 'private')
+        if shared_dir is None:
+            shared_dir = str(jarvis_config.jarvis_root / 'shared')
+            
+        instance.config_dir = config_dir
+        instance.private_dir = private_dir
+        instance.shared_dir = shared_dir
+        
+        # Create default localhost hostfile
+        instance.hostfile = Hostfile()
+        
+        return instance
+    
+    @classmethod  
+    def get_instance(cls):
+        """Get the singleton instance"""
+        if cls._instance is None or not cls._instance._initialized:
+            raise RuntimeError("Jarvis singleton not initialized. Call Jarvis.initialize() first.")
+        return cls._instance

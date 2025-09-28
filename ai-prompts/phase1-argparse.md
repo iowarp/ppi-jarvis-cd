@@ -169,3 +169,40 @@ my_app vpic run 1 --d "(/mnt/home, 5)" --d "(/mnt/home2, 6)"
 ```
 
 Same as example 2, but slightly different
+
+### Example 4: Boolean
+I would like booleans in the argparse to support +/-. 
+```
+vpic run +do_io
+```
+should set do_io to true. 
+
+Alternatively
+```
+vpic run -do_io
+```
+
+
+Sets it to falsee
+
+## Dictionary Arguments
+
+Sometimes, we already have a dictionary of parameters for a particular command, but the individual parameters have not yet been converted to their final types. 
+
+For example, let's say we have a configuration for ``vpic run``:
+```
+arg_dict = {
+    'do_io': True,
+    'devices': [
+        ("path", "1"),
+        ("path2", "2")
+    ]
+}
+```
+
+We should have an api as follows:
+```
+ArgParse.parse_dict('vpic run', arg_dict)
+```
+
+We do not have remainder support for this version, so it will only set self.kwargs

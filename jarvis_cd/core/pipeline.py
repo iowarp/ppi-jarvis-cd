@@ -2,7 +2,7 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from jarvis_cd.core.config import JarvisConfig, load_class
+from jarvis_cd.core.config import JarvisConfig, load_class, Jarvis
 
 
 class PipelineManager:
@@ -91,13 +91,16 @@ class PipelineManager:
         if pkg_id in existing_ids:
             raise ValueError(f"Package ID already exists in pipeline: {pkg_id}")
             
+        # Get default configuration from package
+        default_config = self._get_package_default_config(package_spec)
+        
         # Add package to pipeline
         package_entry = {
             'pkg_type': package_spec,
             'pkg_id': pkg_id,
             'pkg_name': pkg_name,
             'global_id': f"{pipeline_config['name']}.{pkg_id}",
-            'config': {}
+            'config': default_config
         }
         
         pipeline_config['packages'].append(package_entry)
@@ -107,6 +110,72 @@ class PipelineManager:
             yaml.dump(pipeline_config, f, default_flow_style=False)
             
         print(f"Added package {package_spec} as {pkg_id} to pipeline")
+        
+        # Display the package configuration
+        if default_config:
+            print("Package configured with default values:")
+            self._print_package_config(package_entry, "  ")
+        else:
+            print("Package has no configurable options")
+            
+    def remove_package(self, package_spec: str):
+        """
+        Remove a package from a pipeline.
+        
+        :param package_spec: Package specification to remove (pkg_id or pipeline.pkg_id)
+        """
+        # Determine target pipeline and package
+        if '.' in package_spec:
+            # Full specification like "hermes.ior" - use specified pipeline
+            target_pipeline_name, target_pkg_id = package_spec.split('.', 1)
+            pipeline_dir = self.jarvis_config.get_pipeline_dir(target_pipeline_name)
+            
+            if not pipeline_dir.exists():
+                raise ValueError(f"Pipeline not found: {target_pipeline_name}")
+        else:
+            # Just package ID like "ior" - use current pipeline
+            target_pkg_id = package_spec
+            pipeline_dir = self.jarvis_config.get_current_pipeline_dir()
+            
+            if not pipeline_dir:
+                raise ValueError("No current pipeline. Create one with 'jarvis ppl create <name>' or specify as pipeline.package")
+                
+            # Get pipeline name for display
+            config_file = pipeline_dir / 'pipeline.yaml'
+            with open(config_file, 'r') as f:
+                temp_config = yaml.safe_load(f)
+                target_pipeline_name = temp_config['name']
+            
+        # Load pipeline configuration
+        config_file = pipeline_dir / 'pipeline.yaml'
+        with open(config_file, 'r') as f:
+            pipeline_config = yaml.safe_load(f)
+            
+        # Find and remove the package
+        packages = pipeline_config['packages']
+        package_found = False
+        
+        for i, pkg_def in enumerate(packages):
+            if pkg_def['pkg_id'] == target_pkg_id:
+                removed_package = packages.pop(i)
+                package_found = True
+                break
+                
+        if not package_found:
+            # List available packages to help the user
+            available_ids = [pkg['pkg_id'] for pkg in packages]
+            if available_ids:
+                print(f"Package '{target_pkg_id}' not found in current pipeline.")
+                print(f"Available packages: {', '.join(available_ids)}")
+            else:
+                print("No packages in current pipeline.")
+            return
+            
+        # Save updated configuration
+        with open(config_file, 'w') as f:
+            yaml.dump(pipeline_config, f, default_flow_style=False)
+            
+        print(f"Removed package '{removed_package['pkg_id']}' ({removed_package['pkg_type']}) from pipeline '{target_pipeline_name}'")
         
     def load_pipeline(self, load_type: str, pipeline_file: str):
         """
@@ -214,8 +283,18 @@ class PipelineManager:
         self.load_pipeline(update_type, last_loaded_file)
         
     def run_pipeline(self):
-        """Run the current pipeline (start all packages)"""
-        self.start_pipeline()
+        """Run the current pipeline (start all packages, then stop them)"""
+        try:
+            self.start_pipeline()
+            print("Pipeline started successfully. Stopping packages...")
+            self.stop_pipeline()
+        except Exception as e:
+            print(f"Error during pipeline run: {e}")
+            print("Attempting to stop packages...")
+            try:
+                self.stop_pipeline()
+            except Exception as stop_error:
+                print(f"Error during cleanup: {stop_error}")
         
     def start_pipeline(self):
         """Start all packages in the current pipeline"""
@@ -402,8 +481,6 @@ class PipelineManager:
             raise ValueError(f"Package class not found: {class_name} in {import_str}")
             
         # Create instance
-        # For now, create a simple instance - full initialization would require
-        # proper environment setup, configuration, etc.
         pkg_instance = pkg_class()
         
         # Set basic attributes if they exist
@@ -412,6 +489,233 @@ class PipelineManager:
         if hasattr(pkg_instance, 'global_id'):
             pkg_instance.global_id = pkg_def['global_id']
         if hasattr(pkg_instance, 'config'):
-            pkg_instance.config = pkg_def.get('config', {})
+            base_config = pkg_def.get('config', {})
+            
+            # Ensure common parameters are present
+            base_config.setdefault('do_dbg', False)
+            base_config.setdefault('dbg_port', 50000)
+            
+            pkg_instance.config = base_config
+            
+        # Set jarvis singleton for package access
+        if hasattr(pkg_instance, 'jarvis'):
+            pkg_instance.jarvis = Jarvis.get_instance()
             
         return pkg_instance
+        
+    def list_pipelines(self):
+        """List all available pipelines"""
+        pipelines_dir = self.jarvis_config.get_pipelines_dir()
+        
+        if not pipelines_dir.exists():
+            print("No pipelines directory found. Create a pipeline first with 'jarvis ppl create'.")
+            return
+            
+        pipeline_dirs = [d for d in pipelines_dir.iterdir() if d.is_dir()]
+        
+        if not pipeline_dirs:
+            print("No pipelines found. Create a pipeline first with 'jarvis ppl create'.")
+            return
+            
+        current_pipeline = self.jarvis_config.get_current_pipeline()
+        
+        print("Available pipelines:")
+        for pipeline_dir in sorted(pipeline_dirs):
+            pipeline_name = pipeline_dir.name
+            config_file = pipeline_dir / 'pipeline.yaml'
+            
+            if config_file.exists():
+                try:
+                    with open(config_file, 'r') as f:
+                        pipeline_config = yaml.safe_load(f) or {}
+                    
+                    num_packages = len(pipeline_config.get('packages', []))
+                    marker = "* " if pipeline_name == current_pipeline else "  "
+                    print(f"{marker}{pipeline_name} ({num_packages} packages)")
+                    
+                except Exception as e:
+                    marker = "* " if pipeline_name == current_pipeline else "  "
+                    print(f"{marker}{pipeline_name} (error reading config: {e})")
+            else:
+                marker = "* " if pipeline_name == current_pipeline else "  "
+                print(f"{marker}{pipeline_name} (no config file)")
+                
+        if current_pipeline:
+            print(f"\nCurrent pipeline: {current_pipeline}")
+        else:
+            print("\nNo current pipeline set. Use 'jarvis cd <pipeline>' to switch.")
+            
+    def print_current_pipeline(self):
+        """Print the current pipeline configuration"""
+        current_pipeline = self.jarvis_config.get_current_pipeline()
+        
+        if not current_pipeline:
+            print("No current pipeline set. Use 'jarvis cd <pipeline>' to switch.")
+            return
+            
+        pipeline_dir = self.jarvis_config.get_pipeline_dir(current_pipeline)
+        config_file = pipeline_dir / 'pipeline.yaml'
+        
+        if not config_file.exists():
+            print(f"Pipeline configuration not found: {config_file}")
+            return
+            
+        try:
+            with open(config_file, 'r') as f:
+                pipeline_config = yaml.safe_load(f) or {}
+                
+            print(f"Pipeline: {current_pipeline}")
+            print(f"Directory: {pipeline_dir}")
+            
+            packages = pipeline_config.get('packages', [])
+            if packages:
+                print("Packages:")
+                for pkg_def in packages:
+                    pkg_id = pkg_def.get('pkg_id', 'unknown')
+                    pkg_type = pkg_def.get('pkg_type', 'unknown')
+                    global_id = pkg_def.get('global_id', pkg_id)
+                    config = pkg_def.get('config', {})
+                    
+                    print(f"  {pkg_id}:")
+                    print(f"    Type: {pkg_type}")
+                    print(f"    Global ID: {global_id}")
+                    
+                    # Display configuration in a more readable format
+                    if config:
+                        print("    Configuration:")
+                        self._print_package_config(pkg_def, "      ")
+                    else:
+                        print("    Configuration: None")
+            else:
+                print("No packages in pipeline")
+                
+            env = pipeline_config.get('env', {})
+            if env:
+                print("Environment:")
+                for key, value in env.items():
+                    print(f"  {key}: {value}")
+                    
+            last_loaded = pipeline_config.get('last_loaded_file')
+            if last_loaded:
+                print(f"Last loaded from: {last_loaded}")
+                
+        except Exception as e:
+            print(f"Error reading pipeline configuration: {e}")
+            
+    def change_current_pipeline(self, pipeline_name: str):
+        """Change the current pipeline"""
+        pipeline_dir = self.jarvis_config.get_pipeline_dir(pipeline_name)
+        
+        if not pipeline_dir.exists():
+            print(f"Pipeline '{pipeline_name}' not found.")
+            self.list_pipelines()
+            return
+            
+        config_file = pipeline_dir / 'pipeline.yaml'
+        if not config_file.exists():
+            print(f"Pipeline '{pipeline_name}' exists but has no configuration file.")
+            print("You may need to recreate this pipeline.")
+            return
+            
+        # Set current pipeline in configuration
+        self.jarvis_config.set_current_pipeline(pipeline_name)
+        
+        print(f"Switched to pipeline: {pipeline_name}")
+        
+        # Show basic info about the pipeline
+        try:
+            with open(config_file, 'r') as f:
+                pipeline_config = yaml.safe_load(f) or {}
+                
+            num_packages = len(pipeline_config.get('packages', []))
+            print(f"Pipeline has {num_packages} packages")
+            
+        except Exception as e:
+            print(f"Warning: Could not read pipeline configuration: {e}")
+            
+    def _print_package_config(self, pkg_def: Dict[str, Any], indent: str = ""):
+        """Print package configuration in a readable format with descriptions"""
+        config = pkg_def.get('config', {})
+        
+        if not config:
+            print(f"{indent}No configuration set")
+            return
+            
+        # Try to load the package instance to get configuration menu for descriptions
+        config_menu = []
+        try:
+            pkg_instance = self._load_package_instance(pkg_def)
+            if hasattr(pkg_instance, '_configure_menu'):
+                config_menu = pkg_instance._configure_menu()
+        except Exception:
+            # If we can't load the package, just show the raw config
+            pass
+            
+        # Create a lookup for config descriptions
+        config_descriptions = {}
+        for menu_item in config_menu:
+            name = menu_item.get('name')
+            msg = menu_item.get('msg', '')
+            config_descriptions[name] = msg
+            
+        # Display each configuration option
+        for key, value in config.items():
+            description = config_descriptions.get(key, '')
+            
+            # Format the value nicely
+            if isinstance(value, bool):
+                value_str = "Yes" if value else "No"
+            elif isinstance(value, (list, dict)):
+                value_str = str(value)
+            elif value is None:
+                value_str = "None"
+            else:
+                value_str = str(value)
+                
+            # Print with description if available
+            if description:
+                print(f"{indent}{key}: {value_str}")
+                print(f"{indent}  ({description})")
+            else:
+                print(f"{indent}{key}: {value_str}")
+                
+    def _get_package_default_config(self, package_spec: str) -> Dict[str, Any]:
+        """Get default configuration values for a package"""
+        try:
+            # Create a temporary package definition to load the package
+            temp_pkg_def = {
+                'pkg_type': package_spec,
+                'pkg_id': 'temp',
+                'pkg_name': package_spec.split('.')[-1],
+                'global_id': 'temp.temp',
+                'config': {}
+            }
+            
+            # Load package instance
+            pkg_instance = self._load_package_instance(temp_pkg_def)
+            
+            # Get configuration menu
+            if hasattr(pkg_instance, '_configure_menu'):
+                config_menu = pkg_instance._configure_menu()
+                
+                # Extract default values
+                default_config = {}
+                for menu_item in config_menu:
+                    name = menu_item.get('name')
+                    default_value = menu_item.get('default')
+                    
+                    # Only include items that have default values
+                    if name and default_value is not None:
+                        default_config[name] = default_value
+                
+                # Add common parameters that packages might expect
+                default_config.setdefault('do_dbg', False)
+                default_config.setdefault('dbg_port', 50000)
+                        
+                return default_config
+                
+        except Exception as e:
+            # If we can't load the package or get defaults, return empty config
+            print(f"Warning: Could not load default configuration for {package_spec}: {e}")
+            
+        return {}

@@ -388,6 +388,8 @@ A factory that can be used to call any of the other executables.
 
 ## Specific Applications
 
+Add the following to jarvis_cd.shell as system.py
+
 ### Kill
 
 Inherits from Exec. Wraps around pkill on Linux.

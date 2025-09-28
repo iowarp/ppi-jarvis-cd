@@ -54,20 +54,29 @@ class RepositoryManager:
     def list_repositories(self):
         """List all registered repositories"""
         repos = self.jarvis_config.repos['repos']
+        builtin_path = self.jarvis_config.get_builtin_repo_path()
+        builtin_path_str = str(builtin_path)
         
         print("Registered repositories:")
         if not repos:
             print("  No repositories registered")
         else:
-            for i, repo_path in enumerate(repos):
+            repo_count = 0
+            for repo_path in repos:
                 repo_name = Path(repo_path).name
                 exists = "✓" if Path(repo_path).exists() else "✗"
-                print(f"  {i+1}. {repo_name} ({repo_path}) {exists}")
                 
-        # Show builtin repository
-        builtin_path = self.jarvis_config.get_builtin_repo_path()
-        builtin_exists = "✓" if builtin_path.exists() else "✗"
-        print(f"  Built-in: builtin ({builtin_path}) {builtin_exists}")
+                # Check if this is the builtin repository
+                if repo_path == builtin_path_str:
+                    print(f"  {repo_count+1}. {repo_name} ({repo_path}) {exists} [builtin]")
+                else:
+                    print(f"  {repo_count+1}. {repo_name} ({repo_path}) {exists}")
+                repo_count += 1
+                
+        # Only show separate builtin entry if it's not in the registered repos
+        if builtin_path_str not in repos:
+            builtin_exists = "✓" if builtin_path.exists() else "✗"
+            print(f"  Built-in: builtin ({builtin_path}) {builtin_exists}")
         
     def create_package(self, package_name: str, package_type: str):
         """

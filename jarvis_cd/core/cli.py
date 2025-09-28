@@ -2,10 +2,11 @@ import sys
 import os
 from pathlib import Path
 from jarvis_cd.util.argparse import ArgParse
-from jarvis_cd.core.config import JarvisConfig
+from jarvis_cd.core.config import JarvisConfig, Jarvis
 from jarvis_cd.core.pipeline import PipelineManager
 from jarvis_cd.core.repository import RepositoryManager
 from jarvis_cd.core.package import PackageManager
+from jarvis_cd.core.environment import EnvironmentManager
 
 
 class JarvisCLI(ArgParse):
@@ -20,6 +21,7 @@ class JarvisCLI(ArgParse):
         self.pipeline_manager = None
         self.repo_manager = None
         self.pkg_manager = None
+        self.env_manager = None
         
     def define_options(self):
         """Define the complete Jarvis CLI command structure"""
@@ -166,6 +168,55 @@ class JarvisCLI(ArgParse):
             }
         ])
         
+        self.add_cmd('ppl list', msg="List all pipelines", aliases=['ppl ls'])
+        self.add_args([])
+        
+        self.add_cmd('ppl print', msg="Print current pipeline configuration")
+        self.add_args([])
+        
+        self.add_cmd('ppl rm', msg="Remove a package from current pipeline", aliases=['ppl remove'])
+        self.add_args([
+            {
+                'name': 'package_spec',
+                'msg': 'Package to remove (pkg_id or pipeline.pkg_id)',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        # Pipeline environment commands - need to add menu first
+        self.add_menu('ppl env', msg="Pipeline environment management")
+        
+        self.add_cmd('ppl env build', msg="Build environment for current pipeline", keep_remainder=True)
+        self.add_args([])
+        
+        self.add_cmd('ppl env copy', msg="Copy named environment to current pipeline")
+        self.add_args([
+            {
+                'name': 'env_name',
+                'msg': 'Name of environment to copy',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('ppl env show', msg="Show current pipeline environment")
+        self.add_args([])
+        
+        # Change directory (switch current pipeline)
+        self.add_cmd('cd', msg="Change current pipeline")
+        self.add_args([
+            {
+                'name': 'pipeline_name',
+                'msg': 'Name of pipeline to switch to',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
         # Repository commands
         self.add_menu('repo', msg="Repository management commands")
         
@@ -231,6 +282,34 @@ class JarvisCLI(ArgParse):
             }
         ])
         
+        # Environment commands
+        self.add_menu('env', msg="Named environment management")
+        
+        self.add_cmd('env build', msg="Build a named environment", keep_remainder=True)
+        self.add_args([
+            {
+                'name': 'env_name',
+                'msg': 'Name of environment to create',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('env list', msg="List all named environments", aliases=['env ls'])
+        self.add_args([])
+        
+        self.add_cmd('env show', msg="Show a named environment")
+        self.add_args([
+            {
+                'name': 'env_name',
+                'msg': 'Name of environment to show',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
         # Set hostfile command
         self.add_menu('hostfile', msg="Hostfile management")
         self.add_cmd('hostfile set', msg="Set the hostfile for deployments")
@@ -253,6 +332,17 @@ class JarvisCLI(ArgParse):
             print("Error: Jarvis not initialized. Run 'jarvis init' first.")
             sys.exit(1)
             
+        # Initialize Jarvis singleton if not already done
+        try:
+            Jarvis.get_instance()
+        except RuntimeError:
+            # Singleton not initialized, initialize it now
+            config = self.jarvis_config.config
+            config_dir = config.get('config_dir', str(self.jarvis_config.jarvis_root))
+            private_dir = config.get('private_dir', str(self.jarvis_config.jarvis_root / 'private'))
+            shared_dir = config.get('shared_dir', str(self.jarvis_config.jarvis_root / 'shared'))
+            Jarvis.initialize(self.jarvis_config, config_dir, private_dir, shared_dir)
+            
         # Initialize managers
         if self.pipeline_manager is None:
             self.pipeline_manager = PipelineManager(self.jarvis_config)
@@ -260,6 +350,8 @@ class JarvisCLI(ArgParse):
             self.repo_manager = RepositoryManager(self.jarvis_config)
         if self.pkg_manager is None:
             self.pkg_manager = PackageManager(self.jarvis_config)
+        if self.env_manager is None:
+            self.env_manager = EnvironmentManager(self.jarvis_config)
     
     def main_menu(self):
         """Handle main menu / help"""
@@ -284,6 +376,13 @@ class JarvisCLI(ArgParse):
         
         jarvis_config = JarvisConfig()
         jarvis_config.initialize(config_dir, private_dir, shared_dir)
+        
+        # Initialize Jarvis singleton
+        Jarvis.initialize(jarvis_config, config_dir, private_dir, shared_dir)
+        print(f"Jarvis initialized successfully!")
+        print(f"Config dir: {config_dir}")
+        print(f"Private dir: {private_dir}")
+        print(f"Shared dir: {shared_dir}")
         
     def ppl_create(self):
         """Create a new pipeline"""
@@ -348,6 +447,28 @@ class JarvisCLI(ArgParse):
         update_type = self.kwargs.get('update_type', 'yaml')
         self.pipeline_manager.update_pipeline(update_type)
         
+    def ppl_list(self):
+        """List all pipelines"""
+        self._ensure_initialized()
+        self.pipeline_manager.list_pipelines()
+        
+    def ppl_print(self):
+        """Print current pipeline configuration"""
+        self._ensure_initialized()
+        self.pipeline_manager.print_current_pipeline()
+        
+    def ppl_rm(self):
+        """Remove package from current pipeline"""
+        self._ensure_initialized()
+        package_spec = self.kwargs['package_spec']
+        self.pipeline_manager.remove_package(package_spec)
+        
+    def cd(self):
+        """Change current pipeline"""
+        self._ensure_initialized()
+        pipeline_name = self.kwargs['pipeline_name']
+        self.pipeline_manager.change_current_pipeline(pipeline_name)
+        
     def repo_add(self):
         """Add repository"""
         self._ensure_initialized()
@@ -386,6 +507,45 @@ class JarvisCLI(ArgParse):
                 config_args[key] = value
                 
         self.pkg_manager.configure_package(package_spec, config_args)
+        
+    def ppl_env_build(self):
+        """Build environment for current pipeline"""
+        self._ensure_initialized()
+        self.env_manager.build_pipeline_environment(self.remainder)
+        
+    def ppl_env_copy(self):
+        """Copy named environment to current pipeline"""
+        self._ensure_initialized()
+        env_name = self.kwargs['env_name']
+        self.env_manager.copy_named_environment(env_name)
+        
+    def ppl_env_show(self):
+        """Show current pipeline environment"""
+        self._ensure_initialized()
+        self.env_manager.show_pipeline_environment()
+        
+    def env_build(self):
+        """Build a named environment"""
+        self._ensure_initialized()
+        env_name = self.kwargs['env_name']
+        self.env_manager.build_named_environment(env_name, self.remainder)
+        
+    def env_list(self):
+        """List all named environments"""
+        self._ensure_initialized()
+        envs = self.env_manager.list_named_environments()
+        if envs:
+            print("Available named environments:")
+            for env_name in sorted(envs):
+                print(f"  {env_name}")
+        else:
+            print("No named environments found. Create one with 'jarvis env build <name>'")
+            
+    def env_show(self):
+        """Show a named environment"""
+        self._ensure_initialized()
+        env_name = self.kwargs['env_name']
+        self.env_manager.show_named_environment(env_name)
         
     def hostfile_set(self):
         """Set hostfile"""

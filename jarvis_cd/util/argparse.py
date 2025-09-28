@@ -227,15 +227,22 @@ class ArgParse:
         cmd_name, consumed = self._find_command(args)
         
         if cmd_name is None:
-            # Check if first arg might be a menu
-            menu_name = args[0]
-            if menu_name in self.menus:
-                self.print_menu_help(menu_name)
-                return {}
-            else:
-                # Default to empty command
-                cmd_name = ''
-                consumed = 0
+            # Check for multi-word menus first (e.g., "ppl env")
+            for i in range(min(3, len(args)), 0, -1):  # Check up to 3 words, longest first
+                potential_menu = ' '.join(args[:i])
+                if potential_menu in self.menus:
+                    # Check if there's a help flag in the remaining args
+                    remaining_args = args[i:]
+                    if '--help' in remaining_args or '-h' in remaining_args:
+                        self.print_menu_help(potential_menu)
+                        return {}
+                    # If no help flag, treat as menu navigation
+                    self.print_menu_help(potential_menu)
+                    return {}
+            
+            # Default to empty command
+            cmd_name = ''
+            consumed = 0
                 
         self.current_command = cmd_name
         remaining_args = args[consumed:]
@@ -337,10 +344,37 @@ class ArgParse:
                         i += 2
                     else:
                         i += 1
-            elif arg.startswith('-') and len(arg) > 1 and not arg[1:].isdigit():
-                # Short option
+            elif arg.startswith('+') and len(arg) > 1:
+                # +arg format for boolean true
                 key = arg[1:]
                 arg_spec = self._get_argument_info(cmd_name, key)
+                if arg_spec and arg_spec.get('type') == bool:
+                    self.kwargs[arg_spec['name']] = True
+                    i += 1
+                    continue
+                else:
+                    # If not a boolean arg, treat as positional
+                    if pos_index < len(positional_args):
+                        arg_spec = positional_args[pos_index]
+                        self.kwargs[arg_spec['name']] = self._cast_value(arg, arg_spec.get('type', str))
+                        pos_index += 1
+                        i += 1
+                    else:
+                        # Remainder
+                        if keep_remainder:
+                            self.remainder.extend(args[i:])
+                            break
+                        i += 1
+            elif arg.startswith('-') and len(arg) > 1 and not arg[1:].isdigit():
+                # Check for -arg format for boolean false first
+                key = arg[1:]
+                arg_spec = self._get_argument_info(cmd_name, key)
+                if arg_spec and arg_spec.get('type') == bool:
+                    self.kwargs[arg_spec['name']] = False
+                    i += 1
+                    continue
+                
+                # Short option with value
                 if arg_spec and i + 1 < len(args):
                     value = args[i + 1]
                     if arg_spec.get('type') == list:
@@ -508,6 +542,10 @@ class ArgParse:
             if aliases:
                 alias_display = ', '.join([f"-{a}" if len(a) == 1 else f"--{a}" for a in aliases])
                 arg_display += f", {alias_display}"
+            
+            # Add +/- syntax for boolean arguments
+            if arg.get('type') == bool:
+                arg_display += f", +{name}, -{name}"
                 
         print(f"{indent}{arg_display}")
         print(f"{indent}  {msg}")
@@ -523,6 +561,104 @@ class ArgParse:
         
         if details:
             print(f"{indent}  ({', '.join(details)})")
+
+    def parse_dict(self, cmd_name: str, arg_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parse arguments from a dictionary with type conversion.
+        
+        :param cmd_name: Command name to parse for
+        :param arg_dict: Dictionary of argument name -> value
+        :return: Parsed arguments with proper types
+        """
+        self.kwargs = {}
+        self.remainder = []  # No remainder support for dict parsing
+        self.current_menu = None
+        self.current_command = cmd_name
+        
+        # Check if command exists
+        if cmd_name not in self.commands:
+            raise ValueError(f"Command '{cmd_name}' not found")
+            
+        # Get argument specifications for this command
+        if cmd_name not in self.command_args:
+            # No arguments defined, just return the dict as-is with casting
+            self.kwargs = arg_dict.copy()
+            return self._handle_command(cmd_name)
+            
+        arg_specs = self.command_args[cmd_name]
+        
+        # Initialize defaults
+        for arg_spec in arg_specs:
+            if 'default' in arg_spec:
+                self.kwargs[arg_spec['name']] = arg_spec['default']
+                
+        # Process each argument from the dictionary
+        for arg_name, arg_value in arg_dict.items():
+            # Find the argument specification
+            arg_spec = self._get_argument_info(cmd_name, arg_name)
+            
+            if arg_spec is None:
+                # Unknown argument - still include it but without type conversion
+                self.kwargs[arg_name] = arg_value
+                continue
+                
+            # Convert value to proper type
+            try:
+                if arg_spec.get('type') == list:
+                    # Handle list arguments
+                    if isinstance(arg_value, list):
+                        self.kwargs[arg_spec['name']] = self._convert_list_items(arg_value, arg_spec)
+                    else:
+                        # Single value for list - wrap in list
+                        self.kwargs[arg_spec['name']] = [self._parse_single_item(str(arg_value), arg_spec)]
+                else:
+                    # Handle scalar arguments
+                    self.kwargs[arg_spec['name']] = self._cast_value(arg_value, arg_spec.get('type', str))
+                    
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Error converting argument '{arg_name}': {e}")
+                
+        # Check required arguments
+        for arg_spec in arg_specs:
+            if arg_spec.get('required', False) and arg_spec['name'] not in self.kwargs:
+                raise ValueError(f"Required argument '{arg_spec['name']}' not provided")
+                
+        # Validate choices
+        for arg_spec in arg_specs:
+            if 'choices' in arg_spec and arg_spec['name'] in self.kwargs:
+                value = self.kwargs[arg_spec['name']]
+                if value not in arg_spec['choices']:
+                    raise ValueError(f"Argument '{arg_spec['name']}' must be one of {arg_spec['choices']}, got: {value}")
+                    
+        return self._handle_command(cmd_name)
+        
+    def _cast_value(self, value: Any, target_type: type) -> Any:
+        """
+        Cast a value to the target type.
+        
+        :param value: Value to cast
+        :param target_type: Target type
+        :return: Casted value
+        """
+        if target_type == bool:
+            if isinstance(value, bool):
+                return value
+            elif isinstance(value, str):
+                return value.lower() in ('true', '1', 'yes', 'on')
+            else:
+                return bool(value)
+        elif target_type == int:
+            return int(value)
+        elif target_type == float:
+            return float(value)
+        elif target_type == str:
+            return str(value)
+        else:
+            # For other types, try direct conversion or return as-is
+            try:
+                return target_type(value)
+            except (ValueError, TypeError):
+                return value
 
     def define_options(self):
         """Override this method to define your command structure"""
