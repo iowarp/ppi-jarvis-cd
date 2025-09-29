@@ -75,26 +75,26 @@ doc:
 prepends:
   CFLAGS: []
   CMAKE_PREFIX_PATH:
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/cmake
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/cmake
   CPATH: []
   INCLUDE: []
   LDFLAGS: []
   LD_LIBRARY_PATH:
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64
   LIBRARY_PATH:
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64
   PATH:
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/sbin
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/bin
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/sbin
   PKG_CONFIG_PATH:
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib/pkgconfig
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64/pkgconfig
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib/pkgconfig
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64/pkgconfig
   PYTHONPATH:
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
-  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/bin
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib
+  - /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64
 setenvs: {}
 ```
 
@@ -107,18 +107,18 @@ module-whatis 'Name: ppi-jarvis-cd'
 module-whatis 'Version: None'
 module-whatis 'doc: None'
 module load ppi-jarvis-util
-prepend-path CMAKE_PREFIX_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/cmake
-prepend-path LD_LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
-prepend-path LD_LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
-prepend-path LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
-prepend-path LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
-prepend-path PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
-prepend-path PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/sbin
-prepend-path PKG_CONFIG_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib/pkgconfig
-prepend-path PKG_CONFIG_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64/pkgconfig
-prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
-prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
-prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+prepend-path CMAKE_PREFIX_PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/cmake
+prepend-path LD_LIBRARY_PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib
+prepend-path LD_LIBRARY_PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64
+prepend-path LIBRARY_PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib
+prepend-path LIBRARY_PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64
+prepend-path PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/bin
+prepend-path PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/sbin
+prepend-path PKG_CONFIG_PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib/pkgconfig
+prepend-path PKG_CONFIG_PATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64/pkgconfig
+prepend-path PYTHONPATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/bin
+prepend-path PYTHONPATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib
+prepend-path PYTHONPATH /home/llogan/.jarvis-mod/packages/ppi-jarvis-cd/lib64
 ```
 
 ## jarvis mod import [mod_name] [command]

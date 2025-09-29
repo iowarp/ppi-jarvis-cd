@@ -29,6 +29,7 @@ class Exec(CoreExec):
     def run(self):
         """Execute the command using appropriate executor"""
         # Create the appropriate executor based on exec_info type
+         
         if self.exec_info.exec_type == ExecType.LOCAL:
             self._delegate = LocalExec(self.cmd, self.exec_info)
         elif self.exec_info.exec_type == ExecType.SSH:

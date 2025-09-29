@@ -303,6 +303,9 @@ class Pipeline:
         # Get default configuration from package
         default_config = self._get_package_default_config(package_spec)
         
+        # Validate that all required parameters have values
+        self._validate_required_config(package_spec, default_config)
+        
         # Add package to pipeline
         package_entry = {
             'pkg_type': package_spec,
@@ -784,6 +787,49 @@ class Pipeline:
             conflict_list = ', '.join(conflicts)
             raise ValueError(f"ID conflicts between packages and interceptors: {conflict_list}. "
                            f"Package and interceptor IDs must be unique within the pipeline.")
+    
+    def _validate_required_config(self, package_spec: str, config: Dict[str, Any]):
+        """
+        Validate that all required configuration parameters have values.
+        
+        :param package_spec: Package specification 
+        :param config: Configuration dictionary
+        :raises ValueError: If required parameters are missing or None
+        """
+        try:
+            # Create a temporary package definition to load the package
+            temp_pkg_def = {
+                'pkg_type': package_spec,
+                'pkg_id': 'temp',
+                'pkg_name': package_spec.split('.')[-1],
+                'global_id': 'temp.temp',
+                'config': {}
+            }
+            
+            # Load package instance
+            pkg_instance = self._load_package_instance(temp_pkg_def)
+            
+            # Get configuration menu to check for required parameters
+            if hasattr(pkg_instance, 'configure_menu'):
+                config_menu = pkg_instance.configure_menu()
+                if config_menu:
+                    missing_required = []
+                    for menu_item in config_menu:
+                        name = menu_item.get('name')
+                        default_value = menu_item.get('default')
+                        
+                        # If parameter has no default and is not provided in config, it's required
+                        if name and default_value is None and (name not in config or config[name] is None):
+                            missing_required.append(name)
+                    
+                    if missing_required:
+                        raise ValueError(f"Missing required configuration parameters for {package_spec}: {', '.join(missing_required)}")
+                        
+        except Exception as e:
+            if "Missing required configuration parameters" in str(e):
+                raise  # Re-raise our validation error
+            # Other errors during validation are not fatal
+            print(f"Warning: Could not validate configuration for {package_spec}: {e}")
     
     def _apply_interceptors_to_package(self, pkg_instance, pkg_def):
         """

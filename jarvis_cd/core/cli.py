@@ -512,6 +512,25 @@ class JarvisCLI(ArgParse):
         self.add_cmd('rg path', msg="Show path to current resource graph file")
         self.add_args([])
         
+        # Build commands
+        self.add_menu('build', msg="Build environment profiles and configurations")
+        
+        self.add_cmd('build profile', msg="Build environment profile")
+        self.add_args([
+            {
+                'name': 'm',
+                'msg': 'Output method (dotenv, cmake, clion, vscode)',
+                'type': str,
+                'default': 'dotenv'
+            },
+            {
+                'name': 'path',
+                'msg': 'Output file path (prints to console if not specified)',
+                'type': str,
+                'required': False
+            }
+        ])
+        
         # Module management commands
         self.add_menu('mod', msg="Module management commands")
         
@@ -1273,6 +1292,13 @@ class JarvisCLI(ArgParse):
         benchmark = not self.kwargs.get('no_benchmark', False)
         duration = self.kwargs.get('duration', 25)
         self.rg_manager.build_resource_graph(benchmark=benchmark, duration=duration)
+        
+    def build_profile(self):
+        """Build environment profile"""
+        self._ensure_initialized()
+        method = self.kwargs.get('m', 'dotenv')
+        path = self.kwargs.get('path')
+        self.module_manager.build_profile(path, method)
         
     def rg_show(self):
         """Show resource graph summary"""

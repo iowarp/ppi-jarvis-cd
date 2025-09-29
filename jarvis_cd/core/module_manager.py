@@ -51,8 +51,12 @@ class ModuleManager:
         src_dir = package_dir / 'src'
         src_dir.mkdir(exist_ok=True)
         
-        # Create initial YAML file
+        # Create initial YAML file with default paths
         yaml_file = self.modules_dir / f'{mod_name}.yaml'
+        
+        # Get the package root directory path
+        package_root = str(package_dir)
+        
         initial_yaml = {
             'deps': {},
             'doc': {
@@ -62,15 +66,33 @@ class ModuleManager:
             },
             'prepends': {
                 'CFLAGS': [],
-                'CMAKE_PREFIX_PATH': [],
+                'CMAKE_PREFIX_PATH': [
+                    f'{package_root}/cmake'
+                ],
                 'CPATH': [],
                 'INCLUDE': [],
                 'LDFLAGS': [],
-                'LD_LIBRARY_PATH': [],
-                'LIBRARY_PATH': [],
-                'PATH': [],
-                'PKG_CONFIG_PATH': [],
-                'PYTHONPATH': []
+                'LD_LIBRARY_PATH': [
+                    f'{package_root}/lib',
+                    f'{package_root}/lib64'
+                ],
+                'LIBRARY_PATH': [
+                    f'{package_root}/lib',
+                    f'{package_root}/lib64'
+                ],
+                'PATH': [
+                    f'{package_root}/bin',
+                    f'{package_root}/sbin'
+                ],
+                'PKG_CONFIG_PATH': [
+                    f'{package_root}/lib/pkgconfig',
+                    f'{package_root}/lib64/pkgconfig'
+                ],
+                'PYTHONPATH': [
+                    f'{package_root}/bin',
+                    f'{package_root}/lib',
+                    f'{package_root}/lib64'
+                ]
             },
             'setenvs': {}
         }

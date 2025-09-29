@@ -433,7 +433,7 @@ class Pkg:
         env_ld_path = self.env.get('LD_LIBRARY_PATH')
         if env_ld_path:
             search_paths.extend(env_ld_path.split(':'))
-        
+            
         # 2. System LD_LIBRARY_PATH
         system_ld_path = os.environ.get('LD_LIBRARY_PATH')
         if system_ld_path:
@@ -460,6 +460,7 @@ class Pkg:
                 
             for lib_filename in lib_filenames:
                 lib_path = search_dir / lib_filename
+                print(lib_path)
                 if lib_path.exists():
                     return str(lib_path)
         

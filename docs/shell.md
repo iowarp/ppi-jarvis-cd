@@ -482,7 +482,39 @@ def deploy_application(hostfile, config):
 
 ## Best Practices
 
-### 1. Always Use ExecInfo Classes
+### 1. CRITICAL: Always Call .run() to Execute Commands
+
+**MOST IMPORTANT**: All Exec objects and process utilities must call `.run()` to actually execute commands. Simply creating an Exec object does not execute anything.
+
+```python
+# ✅ Correct - Execute the command
+from jarvis_cd.shell import Exec, LocalExecInfo
+
+Exec('ls -la', LocalExecInfo()).run()
+
+# ❌ Wrong - Command is never executed
+Exec('ls -la', LocalExecInfo())  # Does nothing!
+
+# ✅ Correct - Store executor and run
+executor = Exec('./my_app', LocalExecInfo())
+executor.run()
+
+# ✅ Correct - Process utilities also need .run()
+from jarvis_cd.shell.process import Mkdir, Rm, Which
+
+Which('required_tool', LocalExecInfo()).run()
+Mkdir('/output/dir', LocalExecInfo()).run()
+Rm('/tmp/files*', LocalExecInfo()).run()
+
+# ❌ Wrong - These commands are never executed
+Which('required_tool', LocalExecInfo())  # Check not performed!
+Mkdir('/output/dir', LocalExecInfo())    # Directory not created!
+Rm('/tmp/files*', LocalExecInfo())       # Files not removed!
+```
+
+This is the most common mistake when using the shell system and will cause commands to appear to work but actually do nothing.
+
+### 2. Always Use ExecInfo Classes
 
 ```python
 # ✅ Good - Use proper ExecInfo
@@ -496,7 +528,7 @@ from jarvis_cd.shell.exec_info import ExecInfo, ExecType
 exec_info = ExecInfo(exec_type=ExecType.LOCAL)  # Don't do this
 ```
 
-### 2. Handle Errors Properly
+### 3. Handle Errors Properly
 
 ```python
 executor = Exec('risky_command', LocalExecInfo())
@@ -508,7 +540,7 @@ if executor.exit_code['localhost'] != 0:
     raise RuntimeError(f"Command failed: {error_msg}")
 ```
 
-### 3. Use Environment Variables Correctly
+### 4. Use Environment Variables Correctly
 
 ```python
 # ✅ Good - Use package environment
@@ -522,7 +554,7 @@ def start(self):
     Exec('my_command', exec_info).run()
 ```
 
-### 4. Clean Up Resources
+### 5. Clean Up Resources
 
 ```python
 def clean(self):
@@ -536,7 +568,7 @@ def clean(self):
     Sleep(1).run()
 ```
 
-### 5. Use Process Utilities
+### 6. Use Process Utilities
 
 ```python
 # ✅ Good - Use utility classes
@@ -550,7 +582,7 @@ Exec('which required_tool', LocalExecInfo()).run()
 Exec('mkdir -p /output/dir', LocalExecInfo()).run()
 ```
 
-### 6. Handle Timeouts
+### 7. Handle Timeouts
 
 ```python
 # Set reasonable timeouts for long-running commands
@@ -558,7 +590,7 @@ exec_info = LocalExecInfo(timeout=300)  # 5 minutes
 Exec('long_running_command', exec_info).run()
 ```
 
-### 7. Use Proper File Transfer
+### 8. Use Proper File Transfer
 
 ```python
 # ✅ Good - Use ScpExec for file transfers
