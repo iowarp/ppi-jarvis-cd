@@ -536,7 +536,6 @@ class Pipeline:
         
         # Process interceptors
         interceptors_list = pipeline_def.get('interceptors', [])
-        print(f"Found {len(interceptors_list)} interceptors in pipeline definition")
         
         for interceptor_def in interceptors_list:
             interceptor_type = interceptor_def['pkg_type']
@@ -546,13 +545,12 @@ class Pipeline:
                 'pkg_type': interceptor_type,
                 'pkg_id': interceptor_id,
                 'pkg_name': interceptor_type.split('.')[-1],
-                'global_id': f"{self.name}.interceptors.{interceptor_id}",
+                'global_id': f"{self.name}.{interceptor_id}",
                 'config': {k: v for k, v in interceptor_def.items() 
                           if k not in ['pkg_type', 'pkg_name']}
             }
             
             self.interceptors[interceptor_id] = interceptor_entry
-            print(f"Loaded interceptor: {interceptor_id} -> {interceptor_type}")
         
         # Process packages
         for pkg_def in pipeline_def.get('pkgs', []):
@@ -569,6 +567,9 @@ class Pipeline:
             }
             
             self.packages.append(package_entry)
+        
+        # Validate that interceptor and package IDs are unique
+        self._validate_unique_ids()
         
         # Save pipeline configuration and environment
         self.save()
@@ -709,6 +710,23 @@ class Pipeline:
             raise ValueError(f"Failed to load package '{package_spec}': {e}")
             
         return {}
+    
+    def _validate_unique_ids(self):
+        """
+        Validate that interceptor IDs and package IDs are unique within the pipeline.
+        """
+        # Get all package IDs
+        package_ids = {pkg['pkg_id'] for pkg in self.packages}
+        
+        # Get all interceptor IDs
+        interceptor_ids = set(self.interceptors.keys())
+        
+        # Check for conflicts
+        conflicts = package_ids & interceptor_ids
+        if conflicts:
+            conflict_list = ', '.join(conflicts)
+            raise ValueError(f"ID conflicts between packages and interceptors: {conflict_list}. "
+                           f"Package and interceptor IDs must be unique within the pipeline.")
     
     def _apply_interceptors_to_package(self, pkg_instance, pkg_def):
         """
