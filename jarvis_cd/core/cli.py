@@ -620,6 +620,31 @@ class JarvisCLI(ArgParse):
         self.add_cmd('mod list', msg="List all modules")
         self.add_args([])
         
+        self.add_cmd('mod profile', msg="Build environment profile", keep_remainder=True)
+        self.add_args([])
+        
+        self.add_cmd('mod import', msg="Import module from command", keep_remainder=True)
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod update', msg="Update module using stored command")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
         self.add_cmd('mod build profile', msg="Build environment profile")
         self.add_args([
             {
@@ -1351,6 +1376,40 @@ class JarvisCLI(ArgParse):
         """List all modules"""
         self._ensure_initialized()
         self.module_manager.list_modules()
+        
+    def mod_profile(self):
+        """Build environment profile"""
+        self._ensure_initialized()
+        # Parse remainder arguments for m= and path= format
+        method = 'dotenv'  # default
+        path = None
+        
+        if hasattr(self, 'remainder') and self.remainder:
+            for arg in self.remainder:
+                if arg.startswith('m='):
+                    method = arg[2:]
+                elif arg.startswith('path='):
+                    path = arg[5:]
+        
+        self.module_manager.build_profile_new(path, method)
+        
+    def mod_import(self):
+        """Import module from command"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        
+        if not hasattr(self, 'remainder') or not self.remainder:
+            raise ValueError("No command provided. Usage: jarvis mod import <mod_name> <command>")
+        
+        # Join remainder as the command to execute
+        command = ' '.join(self.remainder)
+        self.module_manager.import_module(mod_name, command)
+        
+    def mod_update(self):
+        """Update module using stored command"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        self.module_manager.update_module(mod_name)
         
     def mod_build_profile(self):
         """Build environment profile"""

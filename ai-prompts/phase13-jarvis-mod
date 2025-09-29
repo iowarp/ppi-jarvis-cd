@@ -121,9 +121,18 @@ prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
 prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
 ```
 
+## jarvis mod import [mod_name] [command]
+This will create a module by taking the diff of environment variables before and after the commend, and editing prepend-env.
+The command used to generate the module will be stored in the YAML file under the key "command".
+The command should be launched using a LocalExecInfo.
 
+You should execute the command and then collect all environment variables in the command. Check afterwards if any of the variables changed. If so, take the difference and edit prepend_env and build the modulefile
 
-## jarvis mod build profile m=[method] path=[path]
+## jarvis mod update [mod_name (opt)]
+
+rerun jarvis mod import, but with the stored command.
+
+## jarvis mod profile m=[method] path=[path]
 
 This will collect a snapshot of the important environment variables on the system and dump into different formats. Below is a baseline implementation you should analyze:
 ```

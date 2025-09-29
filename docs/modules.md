@@ -250,10 +250,70 @@ cd $(jarvis mod dir)
 ls $(jarvis mod dir)
 ```
 
+#### `jarvis mod profile [m=method] [path=file]`
+Build a snapshot of current environment variables in various formats (same as environment profile building section).
+
+#### `jarvis mod import <mod_name> <command>`
+Create a module by automatically detecting environment changes before/after running a command.
+
+```bash
+# Import a module from a setup script
+jarvis mod import mypackage "source /opt/mypackage/setup.sh"
+
+# Import from an export command
+jarvis mod import testlib "export PATH=/opt/testlib/bin:\$PATH"
+
+# Import from a more complex command
+jarvis mod import compiler "module load gcc/9.3.0 && export CC=gcc CXX=g++"
+```
+
+**Features:**
+- Automatically detects changes in PATH-like environment variables
+- Stores the command in the YAML file for later updates
+- Creates both YAML and TCL modulefiles
+- Tracks changes in: PATH, LD_LIBRARY_PATH, LIBRARY_PATH, INCLUDE, CPATH, PKG_CONFIG_PATH, CMAKE_PREFIX_PATH, JAVA_HOME, PYTHONPATH, CFLAGS, LDFLAGS
+
+#### `jarvis mod update [mod_name]`
+Update a module by re-running its stored command.
+
+```bash
+# Update specific module
+jarvis mod update mypackage
+
+# Update current module
+jarvis mod cd mypackage
+jarvis mod update
+```
+
+**Use cases:**
+- Refresh module after environment changes
+- Update module after software reinstallation
+- Synchronize module with updated setup scripts
+
 ### Environment Profile Building
 
-#### `jarvis mod build profile [m=method] [path=file]`
+#### `jarvis mod profile [m=method] [path=file]`
 Build a snapshot of current environment variables in various formats.
+
+```bash
+# Print to stdout in default format (dotenv)
+jarvis mod profile
+
+# Print in VSCode launch.json format
+jarvis mod profile m=vscode
+
+# Print in CLion environment format
+jarvis mod profile m=clion
+
+# Save to file in dotenv format
+jarvis mod profile path=.env
+
+# Save to file in CMake format
+jarvis mod profile m=cmake path=env.cmake
+```
+
+#### `jarvis mod build profile [m=method] [path=file]`
+Alternative command for building environment profiles (same functionality as `mod profile`).
 
 ```bash
 # Print to stdout in default format (dotenv)
@@ -285,6 +345,7 @@ jarvis mod build profile m=cmake path=env.cmake
 The YAML file contains structured configuration that's easy to read and modify:
 
 ```yaml
+command: source /opt/mypackage/setup.sh  # Stored command for updates (optional)
 deps:
   ppi-jarvis-util: true         # Module dependencies
 doc:
@@ -309,6 +370,12 @@ setenvs:                        # Variables to set
   ZLIB_ROOT: /home/user/.jarvis-mods/packages/zlib
   ZLIB_VERSION: "1.3"
 ```
+
+#### Command Storage
+When modules are created using `jarvis mod import`, the original command is stored in the `command` field. This allows for:
+- **Reproducible updates**: `jarvis mod update` can re-run the exact same command
+- **Documentation**: The command serves as documentation for how the environment was set up
+- **Version control**: Commands can be tracked and modified as needed
 
 ### TCL Modulefile Format
 
@@ -388,6 +455,27 @@ PATH=/usr/local/bin:/usr/bin:/bin;LD_LIBRARY_PATH=/usr/local/lib:/usr/lib;CMAKE_
 
 ## Advanced Usage
 
+### Automatic Module Import Workflow
+
+Use `jarvis mod import` for software that provides setup scripts:
+
+```bash
+# Import a module from Spack
+jarvis mod import "spack-gcc" "spack load gcc@11.2.0"
+
+# Import from Environment Modules
+jarvis mod import "intel-compiler" "module load intel/2021.4"
+
+# Import from custom setup script
+jarvis mod import "mylib" "source /opt/mylib/env-setup.sh"
+
+# Import from multiple commands
+jarvis mod import "dev-env" "export CC=gcc && export CXX=g++ && export PATH=/opt/tools:\$PATH"
+
+# Update modules when software is updated
+jarvis mod update spack-gcc
+```
+
 ### Working with Dependencies
 
 Create modules that depend on other modules:
@@ -441,7 +529,7 @@ jarvis mod prepend gcc-toolchain \
 #### CMake Integration
 ```bash
 # Build environment profile for CMake
-jarvis mod build profile m=cmake path=build-env.cmake
+jarvis mod profile m=cmake path=build-env.cmake
 
 # Use in CMakeLists.txt
 include(build-env.cmake)
@@ -450,7 +538,7 @@ include(build-env.cmake)
 #### IDE Integration
 ```bash
 # Generate VSCode environment
-jarvis mod build profile m=vscode
+jarvis mod profile m=vscode
 
 # Copy output to .vscode/launch.json environment section
 ```

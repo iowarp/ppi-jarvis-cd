@@ -131,8 +131,11 @@ class LocalExec(CoreExec):
     def run(self):
         """Execute the command locally"""
         # Set up environment
-        env = os.environ.copy()
-        env.update(self.exec_info.env)
+        if self.exec_info.env:
+            env = os.environ.copy()
+            env.update(self.exec_info.env)
+        else:
+            env = os.environ
         
         # Prepare stdin
         stdin_pipe = subprocess.PIPE if self.exec_info.stdin else None

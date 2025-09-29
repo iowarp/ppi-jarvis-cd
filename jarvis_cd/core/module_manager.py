@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from jarvis_cd.core.config import JarvisConfig, Jarvis
 from jarvis_cd.util.logger import logger
+from jarvis_cd.shell.exec_factory import Exec
+from jarvis_cd.shell.exec_info import LocalExecInfo
 
 
 class ModuleManager:
@@ -325,6 +327,234 @@ class ModuleManager:
         
         self._output_profile(profile, path, method)
         return profile
+        
+    def build_profile_new(self, path=None, method=None):
+        """
+        Create a snapshot of important currently-loaded environment variables.
+
+        :param path: Output file path (optional)
+        :param method: Output format (dotenv, cmake, clion, vscode)
+        :return: Environment profile dictionary
+        """
+        env_vars = ['PATH', 'LD_LIBRARY_PATH', 'LIBRARY_PATH',
+                    'INCLUDE', 'CPATH', 'PKG_CONFIG_PATH', 'CMAKE_PREFIX_PATH',
+                    'JAVA_HOME', 'PYTHONPATH']
+        profile = {}
+        for env_var in env_vars:
+            env_data = self._get_env(env_var)
+            if len(env_data) == 0:
+                profile[env_var] = []
+            else:
+                profile[env_var] = env_data.split(':')
+        self.env_profile(profile, path, method)
+        return profile
+
+    def env_profile(self, profile, path=None, method='dotenv'):
+        """Output environment profile in specified format."""
+        # None-path profiles (print to stdout)
+        if method == 'clion':
+            prof_list = [f'{env_var}={":".join(env_data)}'
+                        for env_var, env_data in profile.items()]
+            print(';'.join(prof_list))
+        elif method == 'vscode':
+            vars_list = [f'  "{env_var}": "{":".join(env_data)}"' for env_var, env_data in profile.items()]
+            print('"environment": {')
+            print(',\n'.join(vars_list))
+            print('}')
+        elif method == 'dotenv' and path is None:
+            # Print dotenv format to stdout if no path specified
+            for env_var, env_data in profile.items():
+                print(f'{env_var}="{":".join(env_data)}"')
+        
+        if path is None:
+            return
+        
+        # Path-based profiles
+        with open(path, 'w') as f:
+            if method == 'dotenv':
+                for env_var, env_data in profile.items():
+                    f.write(f'{env_var}="{":".join(env_data)}"\n')
+            elif method == 'cmake':
+                for env_var, env_data in profile.items():
+                    f.write(f'set(ENV{{{env_var}}} "{":".join(env_data)}")\n')
+
+    def import_module(self, mod_name: str, command: str):
+        """
+        Create a module by detecting environment changes before/after running a command.
+        
+        :param mod_name: Name of the module to create
+        :param command: Command to execute and analyze
+        """
+        print(f"Importing module '{mod_name}' from command: {command}")
+        
+        # Environment variables to track
+        env_vars_to_track = ['PATH', 'LD_LIBRARY_PATH', 'LIBRARY_PATH',
+                            'INCLUDE', 'CPATH', 'PKG_CONFIG_PATH', 'CMAKE_PREFIX_PATH',
+                            'JAVA_HOME', 'PYTHONPATH', 'CFLAGS', 'LDFLAGS']
+        
+        # Capture environment before command execution
+        env_before = {}
+        for env_var in env_vars_to_track:
+            env_before[env_var] = os.environ.get(env_var, '')
+        
+        # Execute the command in a shell that will preserve the environment changes
+        # We need to source the command and then print the environment
+        shell_script = f"""#!/bin/bash
+# Source the original environment
+{command}
+# Print environment variables we care about
+echo "=== ENV_START ==="
+"""
+        
+        for env_var in env_vars_to_track:
+            shell_script += f'echo "{env_var}=${{{env_var}}}"\n'
+        
+        shell_script += 'echo "=== ENV_END ==="'
+        
+        # Execute the shell script with interactive shell to preserve functions
+        exec_info = LocalExecInfo(collect_output=True)
+        shell = os.environ.get('SHELL', '/bin/bash')
+        executor = Exec(f'{shell} -i -c \'{shell_script}\'', exec_info)
+        executor.run()
+        
+        # Check exit code (it's a dict with hostname keys)
+        exit_code = executor.exit_code.get('localhost', 0) if isinstance(executor.exit_code, dict) else executor.exit_code
+        if exit_code != 0:
+            print(f"Warning: Command exited with non-zero code {exit_code}")
+            if executor.stderr:
+                stderr_text = ""
+                if isinstance(executor.stderr, dict):
+                    stderr_text = executor.stderr.get('localhost', '') or ""
+                else:
+                    stderr_text = executor.stderr or ""
+                print(f"STDERR: {stderr_text}")
+        
+        # Handle different stdout formats (string or dict)
+        stdout_text = ""
+        if isinstance(executor.stdout, dict):
+            stdout_text = executor.stdout.get('localhost', '') or ""
+        else:
+            stdout_text = executor.stdout or ""
+        
+        # Parse the environment variables from between the markers
+        env_after = {}
+        for env_var in env_vars_to_track:
+            env_after[env_var] = ''
+        
+        lines = stdout_text.split('\n')
+        in_env_section = False
+        
+        for line in lines:
+            line = line.strip()
+            if line == "=== ENV_START ===":
+                in_env_section = True
+                continue
+            elif line == "=== ENV_END ===":
+                in_env_section = False
+                continue
+            elif in_env_section and '=' in line:
+                try:
+                    var_name, var_value = line.split('=', 1)
+                    if var_name in env_vars_to_track:
+                        env_after[var_name] = var_value
+                except ValueError:
+                    continue
+        
+        # Calculate differences
+        env_changes = {}
+        for env_var in env_vars_to_track:
+            before = env_before[env_var]
+            after = env_after[env_var]
+            
+            if before != after:
+                # Split paths and find new additions
+                before_paths = set(before.split(':') if before else [])
+                after_paths = after.split(':') if after else []
+                
+                # Remove empty strings
+                before_paths.discard('')
+                after_paths = [p for p in after_paths if p]
+                
+                # Find new paths that were added
+                new_paths = []
+                for path in after_paths:
+                    if path not in before_paths:
+                        new_paths.append(path)
+                
+                if new_paths:
+                    env_changes[env_var] = new_paths
+        
+        if not env_changes:
+            print("No environment changes detected - creating empty module")
+        else:
+            print(f"Detected {len(env_changes)} environment variable changes")
+        
+        # Create the module
+        self.create_module(mod_name)
+        
+        # Update the module configuration with detected changes
+        yaml_file = self.modules_dir / f'{mod_name}.yaml'
+        with open(yaml_file, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        # Add the command to the config
+        config['command'] = command
+        
+        # Update prepends with detected changes
+        for env_var, new_paths in env_changes.items():
+            if 'prepends' not in config:
+                config['prepends'] = {}
+            if env_var not in config['prepends']:
+                config['prepends'][env_var] = []
+            
+            # Prepend the new paths (reverse order to maintain precedence)
+            for path in reversed(new_paths):
+                if path not in config['prepends'][env_var]:
+                    config['prepends'][env_var].insert(0, path)
+        
+        # Save the updated configuration
+        with open(yaml_file, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+        
+        # Regenerate the TCL file
+        self._generate_tcl_file(mod_name)
+        
+        print(f"Module '{mod_name}' imported successfully")
+        
+    def update_module(self, mod_name: Optional[str] = None):
+        """
+        Update a module by re-running its stored command.
+        
+        :param mod_name: Module name (optional, uses current if None)
+        """
+        if mod_name is None:
+            mod_name = self.jarvis_config.get_current_module()
+            if not mod_name:
+                raise ValueError("No current module set. Use 'jarvis mod cd <module>' or specify module name")
+        
+        if not self._module_exists(mod_name):
+            raise ValueError(f"Module '{mod_name}' does not exist")
+        
+        # Load the module configuration to get the stored command
+        yaml_file = self.modules_dir / f'{mod_name}.yaml'
+        with open(yaml_file, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        stored_command = config.get('command')
+        if not stored_command:
+            raise ValueError(f"Module '{mod_name}' has no stored command - cannot update")
+        
+        print(f"Updating module '{mod_name}' with stored command: {stored_command}")
+        
+        # Remove the existing module (except the package directory)
+        yaml_file = self.modules_dir / f'{mod_name}.yaml'
+        tcl_file = self.modules_dir / mod_name
+        
+        if tcl_file.exists():
+            tcl_file.unlink()
+        
+        # Re-import the module with the stored command
+        self.import_module(mod_name, stored_command)
         
     def list_modules(self):
         """List all available modules."""
