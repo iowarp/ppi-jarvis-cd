@@ -200,8 +200,8 @@ class PackageManager:
             repo_name = import_parts[0]
             pkg_name = import_parts[1]
             
-        # Determine class name (capitalize first letter)
-        class_name = pkg_name.capitalize()
+        # Determine class name (convert snake_case to PascalCase)
+        class_name = ''.join(word.capitalize() for word in pkg_name.split('_'))
         
         # Load class
         if repo_name == 'builtin':
@@ -227,6 +227,66 @@ class PackageManager:
         pkg_instance = pkg_class()
         
         return pkg_instance
+    
+    def show_package_readme(self, package_spec: str):
+        """
+        Show README.md for a package.
+        
+        :param package_spec: Package specification (pkg or repo.pkg)
+        """
+        # Parse package specification  
+        if '.' in package_spec:
+            # repo.pkg format
+            repo_name, pkg_name = package_spec.split('.', 1)
+            full_spec = package_spec
+        else:
+            # Just package name - find it
+            pkg_name = package_spec
+            full_spec = self.jarvis_config.find_package(pkg_name)
+            if not full_spec:
+                print(f"Package not found: {package_spec}")
+                return
+            repo_name = full_spec.split('.')[0]
+            
+        # Find the repository path
+        repo_path = None
+        if repo_name == 'builtin':
+            repo_path = self.jarvis_config.get_builtin_repo_path()
+        else:
+            # Search in registered repositories
+            repos_config = self.jarvis_config.repos
+            repo_paths = repos_config.get('repos', [])
+            for path_str in repo_paths:
+                path = Path(path_str)
+                if path.name == repo_name:
+                    repo_path = path
+                    break
+                    
+        if not repo_path:
+            print(f"Repository not found: {repo_name}")
+            return
+            
+        # Check package directory (following the repo_path/repo_name/pkg_name structure)
+        package_dir = repo_path / repo_name / pkg_name
+        if not package_dir.exists():
+            print(f"Package directory not found: {package_dir}")
+            return
+            
+        readme_path = package_dir / 'README.md'
+        
+        if readme_path.exists():
+            print(f"=== README for {repo_name}.{pkg_name} ===")
+            print(f"Location: {readme_path}")
+            print()
+            try:
+                with open(readme_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                print(content)
+            except Exception as e:
+                print(f"Error reading README: {e}")
+        else:
+            print(f"No README for package {repo_name}.{pkg_name}")
+            print(f"Expected location: {readme_path}")
 
 
 class PackageConfigParser(ArgParse):

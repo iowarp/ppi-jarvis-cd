@@ -3,6 +3,7 @@ Resource graph management for Jarvis.
 Coordinates resource collection across nodes and provides analysis capabilities.
 """
 import json
+import sys
 import threading
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -267,3 +268,17 @@ class ResourceGraphManager:
     def get_common_mounts(self) -> List[str]:
         """Get list of common mount points."""
         return list(self.resource_graph.get_common_storage().keys())
+        
+    def show_resource_graph_path(self):
+        """Show the path to the current resource graph file."""
+        # Default path where resource graph is stored
+        default_path = Path.home() / '.jarvis' / 'resource_graph.yaml'
+        
+        if default_path.exists():
+            # Print only the path for shell command substitution
+            print(default_path)
+        else:
+            # Exit with error code for missing file
+            print(f"Error: No resource graph found at {default_path}", file=sys.stderr)
+            print("Run 'jarvis rg build' to create a resource graph", file=sys.stderr)
+            sys.exit(1)

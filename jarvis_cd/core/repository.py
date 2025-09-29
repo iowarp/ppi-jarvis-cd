@@ -25,6 +25,9 @@ class RepositoryManager:
         :param repo_path: Path to repository directory
         :param force: Force overwrite if repository already exists
         """
+        # Automatically clean up non-existent repositories first
+        self.jarvis_config.cleanup_nonexistent_repos()
+        
         repo_path = Path(repo_path).absolute()
         
         if not repo_path.exists():
@@ -52,8 +55,16 @@ class RepositoryManager:
         repo_path = Path(repo_path).absolute()
         self.jarvis_config.remove_repo(str(repo_path))
         
+        # Also clean up any other non-existent repositories while we're at it
+        self.jarvis_config.cleanup_nonexistent_repos()
+        
     def list_repositories(self):
         """List all registered repositories"""
+        # Automatically clean up non-existent repositories
+        removed_count = self.jarvis_config.cleanup_nonexistent_repos()
+        if removed_count > 0:
+            print()  # Add spacing after cleanup messages
+        
         repos = self.jarvis_config.repos['repos']
         builtin_path = self.jarvis_config.get_builtin_repo_path()
         builtin_path_str = str(builtin_path)

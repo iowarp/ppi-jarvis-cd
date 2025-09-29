@@ -85,7 +85,11 @@ class ResourceGraph:
         self._analyze_common_mounts()
         
     def _analyze_common_mounts(self):
-        """Analyze which mount points are common across nodes."""
+        """Analyze which mount points are common across nodes.
+        
+        For multi-node clusters, mounts are common if they exist on multiple nodes.
+        For single-node clusters, all mounts are considered common.
+        """
         mount_counts: Dict[str, List[StorageDevice]] = defaultdict(list)
         
         # Group devices by mount point
@@ -93,13 +97,16 @@ class ResourceGraph:
             for device in devices:
                 mount_counts[device.mount].append(device)
                 
-        # Find mounts that exist on multiple nodes
+        # Find mounts that exist on multiple nodes, or all mounts if single node
         self.common_mounts = {}
         total_nodes = len(self.nodes)
         
         for mount_point, devices in mount_counts.items():
-            if len(devices) > 1:  # Exists on multiple nodes
-                # Mark as shared if on multiple nodes
+            # Consider mount points common if:
+            # 1. They exist on multiple nodes (len(devices) > 1), OR
+            # 2. There's only one node in the cluster (all its mounts are "common")
+            if len(devices) > 1 or total_nodes == 1:
+                # Mark as shared if on multiple nodes or single node cluster
                 for device in devices:
                     device.shared = True
                 self.common_mounts[mount_point] = devices
@@ -107,6 +114,9 @@ class ResourceGraph:
     def get_common_storage(self) -> Dict[str, List[StorageDevice]]:
         """
         Get storage devices that are common across nodes (same mount point).
+        
+        For multi-node clusters: Returns mount points that exist on multiple nodes.
+        For single-node clusters: Returns all mount points (all are considered common).
         
         :return: Dictionary mapping mount points to list of devices
         """
@@ -263,10 +273,18 @@ class ResourceGraph:
             logger.warning("No common storage found across nodes")
             return
             
-        logger.info("=== Common Storage Across Nodes ===")
+        total_nodes = len(self.nodes)
+        if total_nodes == 1:
+            logger.info("=== Available Storage (Single Node Cluster) ===")
+        else:
+            logger.info("=== Common Storage Across Nodes ===")
+            
         for mount_point, devices in self.common_mounts.items():
             logger.info(f"\nMount point: {mount_point}")
-            logger.info(f"Available on {len(devices)} nodes:")
+            if total_nodes == 1:
+                logger.info(f"Available on node: {devices[0].hostname}")
+            else:
+                logger.info(f"Available on {len(devices)} nodes:")
             
             for device in devices:
                 perf_info = ""

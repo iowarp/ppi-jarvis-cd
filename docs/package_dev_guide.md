@@ -11,9 +11,10 @@ This guide explains how to develop custom packages for Jarvis-CD, including the 
 5. [Configuration](#configuration)
 6. [Package Directory Structure](#package-directory-structure)
 7. [Execution System](#execution-system)
-8. [Interceptor Development](#interceptor-development)
-9. [Implementation Examples](#implementation-examples)
-10. [Best Practices](#best-practices)
+8. [Utility Classes](#utility-classes)
+9. [Interceptor Development](#interceptor-development)
+10. [Implementation Examples](#implementation-examples)
+11. [Best Practices](#best-practices)
 
 ## Repository Structure
 
@@ -35,8 +36,23 @@ my_repo/
 1. **Repository Root**: Contains subdirectories for each package
 2. **Package Directory**: Named after the package (e.g., `ior`, `redis`)
 3. **Main File**: Must be named `pkg.py` (not `package.py`)
-4. **Class Name**: Must be the capitalized package name (e.g., `Ior`, `Redis`)
+4. **Class Name**: Must follow UpperCamelCase naming convention. For single words use capitalized form (e.g., `Ior`, `Redis`). For snake_case package names, convert to UpperCamelCase (e.g., `data_stagein` → `DataStagein`, `redis_benchmark` → `RedisBenchmark`)
 5. **Init Files**: Include `__init__.py` files for proper Python module structure
+
+### Package Class Naming Convention
+
+Package class names must follow the UpperCamelCase (PascalCase) naming convention:
+
+| Package Directory | Expected Class Name | Notes |
+|-------------------|-------------------|-------|
+| `ior` | `Ior` | Single word - capitalize first letter |
+| `redis` | `Redis` | Single word - capitalize first letter |
+| `data_stagein` | `DataStagein` | Snake_case - convert to UpperCamelCase |
+| `redis_benchmark` | `RedisBenchmark` | Snake_case - convert to UpperCamelCase |
+| `cosmic_tagger` | `CosmicTagger` | Snake_case - convert to UpperCamelCase |
+| `adios2_gray_scott` | `Adios2GrayScott` | Mixed - convert to UpperCamelCase |
+
+**Important**: Package loading will fail with a fatal error if the class name doesn't match this convention, preventing the package from being added to pipelines.
 
 ### Adding Repositories
 
@@ -728,6 +744,370 @@ exec_info = MpiExecInfo(
     ppn=4  # Processes per node
 )
 ```
+
+## Utility Classes
+
+Jarvis-CD provides several utility classes to help with common tasks in package development:
+
+### SizeType - Size String Conversion
+
+The `SizeType` class converts size strings (like "1k", "2M", "10G") to integer byte values using binary multipliers (powers of 2).
+
+#### Supported Multipliers
+
+- **k/K**: 1024 (1 << 10) - Kilobytes
+- **m/M**: 1048576 (1 << 20) - Megabytes  
+- **g/G**: 1073741824 (1 << 30) - Gigabytes
+- **t/T**: 1099511627776 (1 << 40) - Terabytes
+
+#### Basic Usage
+
+SizeType works bidirectionally - it can convert from human-readable strings to bytes, or from bytes to human-readable strings:
+
+```python
+from jarvis_cd.util import SizeType
+
+# String -> Bytes (parsing user input)
+buffer_size = SizeType("1M")        # 1048576 bytes
+cache_size = SizeType("512k")       # 524288 bytes
+storage_limit = SizeType("10G")     # 10737418240 bytes
+
+# Bytes -> Human Readable (formatting numeric values)
+exact_size = SizeType(1048576)      # "1M" when displayed
+partial_size = SizeType(1536)       # "1.5K" when displayed  
+float_size = SizeType(2048.5)       # "2K" when displayed (rounded)
+
+# Round-trip conversion works perfectly
+original = SizeType("1.5M")
+bytes_val = original.bytes          # 1572864
+reconstructed = SizeType(bytes_val) # Back to "1.5M"
+assert str(original) == str(reconstructed)
+
+# Convert to integer bytes (multiple ways)
+bytes_value = int(buffer_size)      # 1048576 - using int() conversion
+bytes_value = buffer_size.bytes     # 1048576 - using .bytes property  
+bytes_value = buffer_size.to_bytes() # 1048576 - using .to_bytes() method
+
+# Use in configuration
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Parse buffer size from config
+    buffer_size = SizeType(self.config['buffer_size'])
+    self.setenv('BUFFER_SIZE', str(buffer_size.bytes))
+    
+    # Set memory limits  
+    mem_limit = SizeType(self.config.get('memory_limit', '1G'))
+    if mem_limit.gigabytes > 8:
+        print(f"Warning: Large memory limit: {mem_limit.to_human_readable()}")
+```
+
+#### Configuration Integration
+
+Use SizeType in `_configure_menu()` for size-based parameters:
+
+```python
+def _configure_menu(self):
+    return [
+        {
+            'name': 'buffer_size',
+            'msg': 'Buffer size (e.g., 1M, 512K, 2G)',
+            'type': str,
+            'default': '1M'
+        },
+        {
+            'name': 'cache_size', 
+            'msg': 'Cache size (e.g., 100M, 1G)',
+            'type': str,
+            'default': '100M'
+        },
+        {
+            'name': 'max_file_size',
+            'msg': 'Maximum file size (e.g., 10G, 1T)',
+            'type': str,
+            'default': '10G'
+        }
+    ]
+
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    # Convert size strings to bytes for application use
+    buffer_bytes = SizeType(self.config['buffer_size']).bytes
+    cache_bytes = SizeType(self.config['cache_size']).bytes
+    max_file_bytes = SizeType(self.config['max_file_size']).bytes
+    
+    # Set environment variables as bytes
+    self.setenv('BUFFER_SIZE', str(buffer_bytes))
+    self.setenv('CACHE_SIZE', str(cache_bytes))
+    self.setenv('MAX_FILE_SIZE', str(max_file_bytes))
+    
+    # Generate configuration file with byte values
+    config_content = f"""
+    buffer_size={buffer_bytes}
+    cache_size={cache_bytes}
+    max_file_size={max_file_bytes}
+    """
+    
+    with open(f'{self.shared_dir}/app_config.conf', 'w') as f:
+        f.write(config_content)
+```
+
+#### Getting Integer Bytes
+
+There are multiple ways to get the size as integer bytes:
+
+```python
+size = SizeType("1M")
+
+# Method 1: int() conversion (most common)
+bytes_int = int(size)                    # 1048576
+
+# Method 2: .bytes property  
+bytes_int = size.bytes                   # 1048576
+
+# Method 3: .to_bytes() method (explicit)
+bytes_int = size.to_bytes()              # 1048576
+
+# All return the same integer value
+assert int(size) == size.bytes == size.to_bytes()
+
+# Use in environment variables (strings)
+self.setenv('BUFFER_SIZE', str(size.bytes))
+self.setenv('CACHE_SIZE', str(int(size)))
+```
+
+#### Properties and Conversion
+
+```python
+size = SizeType("2G")
+
+# Access different units
+print(f"Bytes: {size.bytes}")           # 2147483648
+print(f"KB: {size.kilobytes}")          # 2097152.0
+print(f"MB: {size.megabytes}")          # 2048.0  
+print(f"GB: {size.gigabytes}")          # 2.0
+print(f"TB: {size.terabytes}")          # 0.001953125
+
+# Human-readable format
+print(f"Human: {size.to_human_readable()}")  # "2G"
+print(f"String: {str(size)}")                # "2G"
+```
+
+#### Arithmetic Operations
+
+```python
+# Arithmetic with other SizeType instances
+total_memory = SizeType("1G") + SizeType("512M")  # 1.5G
+remaining = SizeType("2G") - SizeType("500M")     # 1.5G
+
+# Arithmetic with numbers
+doubled = SizeType("1G") * 2                      # 2G
+half = SizeType("1G") / 2                         # 512M
+
+# Comparisons
+if SizeType("1G") > SizeType("500M"):
+    print("1G is larger than 500M")
+
+# Use in sorting
+sizes = [SizeType("1M"), SizeType("1G"), SizeType("100K")]
+sorted_sizes = sorted(sizes)  # [100K, 1M, 1G]
+```
+
+#### Class Methods
+
+```python
+# Create from different units
+size1 = SizeType.from_bytes(1048576)      # 1M
+size2 = SizeType.from_kilobytes(1024)     # 1M
+size3 = SizeType.from_megabytes(1)        # 1M
+size4 = SizeType.from_gigabytes(1)        # 1G
+
+# Parse method (same as constructor)
+size = SizeType.parse("1G")               # Same as SizeType("1G")
+
+# Create from integer bytes and display human-readable
+memory_usage = SizeType.from_bytes(67108864)  # 64M
+print(f"Memory usage: {memory_usage}")         # "64M"
+```
+
+#### Bidirectional Usage Example
+
+```python
+class MemoryMonitor(Application):
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'max_memory',
+                'msg': 'Maximum memory usage (e.g., 1G, 512M)',
+                'type': str,
+                'default': '1G'
+            }
+        ]
+    
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
+        
+        # Parse user-provided limit (string -> bytes)
+        self.max_memory = SizeType(self.config['max_memory'])
+        self.setenv('MAX_MEMORY_BYTES', str(self.max_memory.bytes))
+        
+    def monitor_memory(self):
+        # Get current memory usage in bytes from system
+        current_bytes = self.get_memory_usage()  # Returns integer bytes
+        
+        # Convert bytes to human-readable for display (bytes -> string)
+        current_readable = SizeType(current_bytes)
+        
+        print(f"Memory usage: {current_readable} / {self.max_memory}")
+        
+        # Compare with limit
+        if current_bytes > self.max_memory.bytes:
+            print(f"Warning: Exceeded memory limit!")
+            
+        return current_readable
+```
+
+#### Convenience Functions
+
+```python
+from jarvis_cd.util import size_to_bytes, human_readable_size
+
+# Quick conversion to integer bytes (no SizeType object needed)
+bytes_val = size_to_bytes("1M")           # 1048576 (integer)
+bytes_val = size_to_bytes("512K")         # 524288 (integer)
+bytes_val = size_to_bytes("2G")           # 2147483648 (integer)
+
+# Quick human-readable formatting
+readable = human_readable_size(1048576)   # "1M"
+readable = human_readable_size(2147483648) # "2G"
+
+# Use in configuration parsing
+def parse_config_size(config_value):
+    return size_to_bytes(config_value)  # Direct integer bytes
+```
+
+#### Input Validation and Error Handling
+
+```python
+def _configure(self, **kwargs):
+    # Configuration automatically updated
+    
+    try:
+        buffer_size = SizeType(self.config['buffer_size'])
+        
+        # Validate reasonable limits
+        if buffer_size.bytes < 1024:  # Less than 1K
+            raise ValueError("Buffer size too small (minimum 1K)")
+        elif buffer_size.gigabytes > 100:  # More than 100G
+            raise ValueError("Buffer size too large (maximum 100G)")
+            
+        self.buffer_bytes = buffer_size.bytes
+        
+    except ValueError as e:
+        raise ValueError(f"Invalid buffer_size '{self.config['buffer_size']}': {e}")
+```
+
+#### Real-World Usage Examples
+
+##### Memory-Intensive Application
+
+```python
+class BigDataProcessor(Application):
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'chunk_size',
+                'msg': 'Data chunk size for processing (e.g., 64M, 1G)',
+                'type': str,
+                'default': '64M'
+            },
+            {
+                'name': 'memory_limit',
+                'msg': 'Maximum memory usage (e.g., 4G, 16G)',
+                'type': str,
+                'default': '4G'
+            }
+        ]
+    
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
+        
+        chunk_size = SizeType(self.config['chunk_size'])
+        memory_limit = SizeType(self.config['memory_limit'])
+        
+        # Calculate number of chunks that fit in memory
+        max_chunks = int(memory_limit.bytes / chunk_size.bytes)
+        
+        # Set application parameters
+        self.setenv('CHUNK_SIZE_BYTES', str(chunk_size.bytes))
+        self.setenv('MAX_CHUNKS', str(max_chunks))
+        self.setenv('MEMORY_LIMIT_BYTES', str(memory_limit.bytes))
+        
+        print(f"Processing with {chunk_size.to_human_readable()} chunks")
+        print(f"Memory limit: {memory_limit.to_human_readable()}")
+        print(f"Max concurrent chunks: {max_chunks}")
+```
+
+##### Storage Configuration
+
+```python
+class DatabaseApp(Service):
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'cache_size',
+                'msg': 'Database cache size (e.g., 512M, 2G)',
+                'type': str,
+                'default': '512M'
+            },
+            {
+                'name': 'log_file_size',
+                'msg': 'Maximum log file size (e.g., 100M, 1G)',
+                'type': str,
+                'default': '100M'
+            },
+            {
+                'name': 'data_threshold',
+                'msg': 'Archive threshold (e.g., 10G, 100G)',
+                'type': str,
+                'default': '10G'
+            }
+        ]
+    
+    def _configure(self, **kwargs):
+        # Configuration automatically updated
+        
+        cache_size = SizeType(self.config['cache_size'])
+        log_file_size = SizeType(self.config['log_file_size'])
+        data_threshold = SizeType(self.config['data_threshold'])
+        
+        # Generate database configuration
+        db_config = f"""
+        [memory]
+        cache_size = {cache_size.bytes}
+        
+        [logging]
+        max_log_file_size = {log_file_size.bytes}
+        
+        [storage]
+        archive_threshold = {data_threshold.bytes}
+        """
+        
+        with open(f'{self.shared_dir}/database.conf', 'w') as f:
+            f.write(db_config)
+```
+
+#### Best Practices
+
+1. **Always validate sizes** in configuration methods
+2. **Use human-readable defaults** in `_configure_menu()` 
+3. **Convert to bytes early** in the configuration process
+4. **Provide reasonable limits** and error messages
+5. **Use properties** for different unit access
+6. **Document expected formats** in parameter descriptions
+
+The SizeType class makes it easy to handle size specifications in a user-friendly way while ensuring consistent binary calculations throughout your packages.
 
 ## Interceptor Development
 
@@ -1578,3 +1958,37 @@ class MyPackage(Application):
 ```
 
 This guide provides the foundation for developing robust Jarvis-CD packages. For more advanced topics, refer to the existing builtin packages in the `builtin/` directory for real-world examples.
+
+## Pipeline Management Commands
+
+### `jarvis ppl destroy`
+
+Destroys a pipeline by removing its directory and configuration files. Automatically cleans package data before destruction.
+
+**Usage:**
+```bash
+# Destroy the current pipeline
+jarvis ppl destroy
+
+# Destroy a specific pipeline by name
+jarvis ppl destroy pipeline_name
+```
+
+**Behavior:**
+- If no pipeline name is provided, destroys the current pipeline
+- Attempts to clean package data before destruction using each package's `clean()` method
+- Removes the entire pipeline directory and configuration files
+- Clears the current pipeline if the destroyed pipeline was active
+- Shows remaining pipelines after successful destruction
+
+**Example:**
+```bash
+# Create and destroy a test pipeline
+jarvis ppl create test_pipeline
+jarvis ppl append echo
+jarvis ppl destroy  # Destroys current pipeline (test_pipeline)
+
+# Destroy a specific pipeline while working on another
+jarvis cd other_pipeline
+jarvis ppl destroy test_pipeline  # Destroys test_pipeline, keeps other_pipeline active
+```

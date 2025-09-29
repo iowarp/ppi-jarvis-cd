@@ -189,6 +189,16 @@ class JarvisCLI(ArgParse):
             }
         ])
         
+        self.add_cmd('ppl destroy', msg="Destroy a pipeline")
+        self.add_args([
+            {
+                'name': 'pipeline_name',
+                'msg': 'Name of pipeline to destroy (optional, defaults to current)',
+                'type': str,
+                'pos': True
+            }
+        ])
+        
         # Pipeline environment commands - need to add menu first
         self.add_menu('ppl env', msg="Pipeline environment management")
         
@@ -336,6 +346,17 @@ class JarvisCLI(ArgParse):
             }
         ])
         
+        self.add_cmd('pkg readme', msg="Show package README")
+        self.add_args([
+            {
+                'name': 'package_spec',
+                'msg': 'Package to show README for (pkg or repo.pkg)',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
         # Environment commands
         self.add_menu('env', msg="Named environment management")
         
@@ -434,6 +455,9 @@ class JarvisCLI(ArgParse):
                 'pos': True
             }
         ])
+        
+        self.add_cmd('rg path', msg="Show path to current resource graph file")
+        self.add_args([])
         
     def _ensure_initialized(self):
         """Ensure Jarvis is initialized before running commands"""
@@ -582,6 +606,12 @@ class JarvisCLI(ArgParse):
         package_spec = self.kwargs['package_spec']
         self.pipeline_manager.remove_package(package_spec)
         
+    def ppl_destroy(self):
+        """Destroy a pipeline"""
+        self._ensure_initialized()
+        pipeline_name = self.kwargs.get('pipeline_name')
+        self.pipeline_manager.destroy_pipeline(pipeline_name)
+        
     def cd(self):
         """Change current pipeline"""
         self._ensure_initialized()
@@ -627,6 +657,12 @@ class JarvisCLI(ArgParse):
                 config_args[key] = value
                 
         self.pkg_manager.configure_package(package_spec, config_args)
+        
+    def pkg_readme(self):
+        """Show package README"""
+        self._ensure_initialized()
+        package_spec = self.kwargs['package_spec']
+        self.pkg_manager.show_package_readme(package_spec)
         
     def ppl_env_build(self):
         """Build environment for current pipeline"""
@@ -707,6 +743,11 @@ class JarvisCLI(ArgParse):
         self._ensure_initialized()
         file_path = Path(self.kwargs['file_path'])
         self.rg_manager.load_resource_graph(file_path)
+        
+    def rg_path(self):
+        """Show path to current resource graph file"""
+        self._ensure_initialized()
+        self.rg_manager.show_resource_graph_path()
         
     def ppl_index_load(self):
         """Load a pipeline script from an index"""

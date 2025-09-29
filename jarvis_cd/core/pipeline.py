@@ -444,6 +444,111 @@ class PipelineManager:
                     
             except Exception as e:
                 print(f"Error cleaning package {pkg_def['pkg_id']}: {e}")
+    
+    def destroy_pipeline(self, pipeline_name: Optional[str] = None):
+        """
+        Destroy a pipeline by removing its directory and configuration.
+        If no pipeline name is provided, destroy the current pipeline.
+        
+        :param pipeline_name: Name of pipeline to destroy (optional)
+        """
+        # Determine which pipeline to destroy
+        if pipeline_name is None:
+            # Use current pipeline
+            current_pipeline = self.jarvis_config.get_current_pipeline()
+            if not current_pipeline:
+                print("No current pipeline to destroy. Specify a pipeline name or create/switch to one first.")
+                return
+            pipeline_name = current_pipeline
+            target_pipeline_dir = self.jarvis_config.get_current_pipeline_dir()
+            is_current = True
+        else:
+            # Use specified pipeline
+            target_pipeline_dir = self.jarvis_config.get_pipeline_dir(pipeline_name)
+            current_pipeline = self.jarvis_config.get_current_pipeline()
+            is_current = (pipeline_name == current_pipeline)
+        
+        # Check if pipeline exists
+        if not target_pipeline_dir.exists():
+            print(f"Pipeline '{pipeline_name}' not found.")
+            self.list_pipelines()
+            return
+        
+        # Confirm destruction
+        config_file = target_pipeline_dir / 'pipeline.yaml'
+        num_packages = 0
+        
+        if config_file.exists():
+            try:
+                with open(config_file, 'r') as f:
+                    pipeline_config = yaml.safe_load(f)
+                    num_packages = len(pipeline_config.get('packages', []))
+            except Exception:
+                pass
+        
+        print(f"About to destroy pipeline '{pipeline_name}' with {num_packages} packages.")
+        print(f"Pipeline directory: {target_pipeline_dir}")
+        
+        # Try to clean packages first if pipeline is loadable
+        if config_file.exists():
+            try:
+                # Temporarily set this as current pipeline for cleaning if needed
+                original_current = self.jarvis_config.get_current_pipeline()
+                if not is_current:
+                    self.jarvis_config.set_current_pipeline(pipeline_name)
+                
+                print("Attempting to clean package data before destruction...")
+                # Load pipeline configuration
+                with open(config_file, 'r') as f:
+                    pipeline_config = yaml.safe_load(f)
+                    
+                # Load pipeline environment
+                pipeline_env = self._load_pipeline_environment(target_pipeline_dir)
+                
+                # Clean each package
+                for pkg_def in pipeline_config['packages']:
+                    try:
+                        logger.package(f"Cleaning package: {pkg_def['pkg_id']}")
+                        pkg_instance = self._load_package_instance(pkg_def, pipeline_env)
+                        
+                        if hasattr(pkg_instance, 'clean'):
+                            pkg_instance.clean()
+                        
+                    except Exception as e:
+                        print(f"Warning: Error cleaning package {pkg_def['pkg_id']}: {e}")
+                
+                # Restore original current pipeline if we changed it
+                if not is_current and original_current:
+                    self.jarvis_config.set_current_pipeline(original_current)
+                elif not is_current and not original_current:
+                    # Clear current pipeline if there wasn't one before
+                    config = self.jarvis_config.config.copy()
+                    config['current_pipeline'] = None
+                    self.jarvis_config.save_config(config)
+                    
+            except Exception as e:
+                print(f"Warning: Could not clean packages before destruction: {e}")
+        
+        # Remove pipeline directory
+        import shutil
+        try:
+            shutil.rmtree(target_pipeline_dir)
+            print(f"Destroyed pipeline: {pipeline_name}")
+            
+            # Clear current pipeline if we destroyed it
+            if is_current:
+                config = self.jarvis_config.config.copy()
+                config['current_pipeline'] = None
+                self.jarvis_config.save_config(config)
+                print("Cleared current pipeline (destroyed pipeline was active)")
+                
+        except Exception as e:
+            print(f"Error destroying pipeline directory: {e}")
+            return
+        
+        # Show remaining pipelines
+        print()
+        self.list_pipelines()
                 
     def show_status(self):
         """Show status of the current pipeline"""
@@ -531,8 +636,8 @@ class PipelineManager:
             repo_name = import_parts[0]
             pkg_name = import_parts[1]
             
-        # Determine class name (capitalize first letter)
-        class_name = pkg_name.capitalize()
+        # Determine class name (convert snake_case to PascalCase)
+        class_name = ''.join(word.capitalize() for word in pkg_name.split('_'))
         
         # Load class
         if repo_name == 'builtin':
@@ -802,7 +907,7 @@ class PipelineManager:
                 return default_config
                 
         except Exception as e:
-            # If we can't load the package or get defaults, return empty config
-            print(f"Warning: Could not load default configuration for {package_spec}: {e}")
+            # Package loading failure should be fatal - cannot add package to pipeline
+            raise ValueError(f"Failed to load package '{package_spec}': {e}")
             
         return {}

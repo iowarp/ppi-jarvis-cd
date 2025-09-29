@@ -217,6 +217,31 @@ class JarvisConfig:
             print(f"Removed repository: {repo_path}")
         else:
             print(f"Repository not found: {repo_path}")
+    
+    def cleanup_nonexistent_repos(self):
+        """Remove any repositories from configuration that no longer exist on disk"""
+        repos = self.repos.copy()
+        initial_count = len(repos['repos'])
+        removed_repos = []
+        
+        # Filter out non-existent repositories
+        existing_repos = []
+        for repo_path in repos['repos']:
+            if Path(repo_path).exists():
+                existing_repos.append(repo_path)
+            else:
+                removed_repos.append(repo_path)
+        
+        # Update repos if any were removed
+        if removed_repos:
+            repos['repos'] = existing_repos
+            self.save_repos(repos)
+            
+            print(f"Automatically removed {len(removed_repos)} non-existent repositories:")
+            for repo_path in removed_repos:
+                print(f"  - {repo_path}")
+        
+        return len(removed_repos)
             
     def set_hostfile(self, hostfile_path: str):
         """Set the hostfile path in configuration"""
