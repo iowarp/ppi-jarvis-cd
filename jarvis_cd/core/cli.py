@@ -25,6 +25,7 @@ class JarvisCLI(ArgParse):
         self.repo_manager = None
         self.env_manager = None
         self.rg_manager = None
+        self.module_manager = None
         
     def define_options(self):
         """Define the complete Jarvis CLI command structure"""
@@ -511,6 +512,131 @@ class JarvisCLI(ArgParse):
         self.add_cmd('rg path', msg="Show path to current resource graph file")
         self.add_args([])
         
+        # Module management commands
+        self.add_menu('mod', msg="Module management commands")
+        
+        self.add_cmd('mod create', msg="Create a new module")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod cd', msg="Set current module")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod prepend', msg="Prepend environment variables to module", keep_remainder=True)
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod setenv', msg="Set environment variables in module", keep_remainder=True)
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod destroy', msg="Destroy a module")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod src', msg="Show module source directory")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod root', msg="Show module root directory")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod tcl', msg="Show module TCL file path")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod yaml', msg="Show module YAML file path")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+        
+        self.add_cmd('mod dir', msg="Show modules directory")
+        self.add_args([])
+        
+        self.add_cmd('mod list', msg="List all modules")
+        self.add_args([])
+        
+        self.add_cmd('mod build profile', msg="Build environment profile")
+        self.add_args([
+            {
+                'name': 'm',
+                'msg': 'Output method (dotenv, cmake, clion, vscode)',
+                'type': str,
+                'default': 'dotenv',
+                'aliases': ['method']
+            },
+            {
+                'name': 'path',
+                'msg': 'Output file path (optional)',
+                'type': str,
+                'required': False
+            }
+        ])
+        
     def _ensure_initialized(self):
         """Ensure Jarvis is initialized before running commands"""
         if self.jarvis_config is None:
@@ -540,6 +666,9 @@ class JarvisCLI(ArgParse):
             self.rg_manager = ResourceGraphManager()
         if self.pipeline_index_manager is None:
             self.pipeline_index_manager = PipelineIndexManager(self.jarvis_config)
+        if self.module_manager is None:
+            from jarvis_cd.core.module_manager import ModuleManager
+            self.module_manager = ModuleManager(self.jarvis_config)
         
         # Load current pipeline if one exists
         current_pipeline_name = self.jarvis_config.get_current_pipeline()
@@ -1152,6 +1281,83 @@ class JarvisCLI(ArgParse):
         """Show path to current resource graph file"""
         self._ensure_initialized()
         self.rg_manager.show_resource_graph_path()
+        
+    # Module management commands
+    def mod_create(self):
+        """Create a new module"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        if not mod_name:
+            # Generate a unique module name or prompt user
+            import time
+            mod_name = f"module_{int(time.time())}"
+            print(f"No module name provided, using: {mod_name}")
+        self.module_manager.create_module(mod_name)
+        
+    def mod_cd(self):
+        """Set current module"""
+        self._ensure_initialized()
+        mod_name = self.kwargs['mod_name']
+        self.module_manager.set_current_module(mod_name)
+        
+    def mod_prepend(self):
+        """Prepend environment variables to module"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        self.module_manager.prepend_env_vars(mod_name, self.remainder)
+        
+    def mod_setenv(self):
+        """Set environment variables in module"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        self.module_manager.set_env_vars(mod_name, self.remainder)
+        
+    def mod_destroy(self):
+        """Destroy a module"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        self.module_manager.destroy_module(mod_name)
+        
+    def mod_src(self):
+        """Show module source directory"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        print(self.module_manager.get_module_src_dir(mod_name))
+        
+    def mod_root(self):
+        """Show module root directory"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        print(self.module_manager.get_module_root_dir(mod_name))
+        
+    def mod_tcl(self):
+        """Show module TCL file path"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        print(self.module_manager.get_module_tcl_path(mod_name))
+        
+    def mod_yaml(self):
+        """Show module YAML file path"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        print(self.module_manager.get_module_yaml_path(mod_name))
+        
+    def mod_dir(self):
+        """Show modules directory"""
+        self._ensure_initialized()
+        print(self.module_manager.modules_dir)
+        
+    def mod_list(self):
+        """List all modules"""
+        self._ensure_initialized()
+        self.module_manager.list_modules()
+        
+    def mod_build_profile(self):
+        """Build environment profile"""
+        self._ensure_initialized()
+        method = self.kwargs.get('m', 'dotenv')
+        path = self.kwargs.get('path')
+        self.module_manager.build_profile(path, method)
         
     def ppl_index_load(self):
         """Load a pipeline script from an index"""

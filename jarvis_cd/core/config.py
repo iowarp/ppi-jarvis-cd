@@ -309,6 +309,16 @@ class JarvisConfig:
         """Get the name of the current active pipeline"""
         return self.config.get('current_pipeline')
         
+    def set_current_module(self, module_name: Optional[str]):
+        """Set the current active module"""
+        config = self.config.copy()
+        config['current_module'] = module_name
+        self.save_config(config)
+        
+    def get_current_module(self) -> Optional[str]:
+        """Get the name of the current active module"""
+        return self.config.get('current_module')
+        
     def get_pipelines_dir(self) -> Path:
         """Get the directory where all pipelines are stored"""
         config_dir = Path(self.config['config_dir'])

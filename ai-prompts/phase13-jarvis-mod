@@ -1,0 +1,173 @@
+# jarvis mod
+
+This menu will be used for creating modulefiles, which 
+are used for storing common environment variables for manually-installed packages.
+
+## Basic Usage
+
+Below is an example of how one would manually install zlib with jarvis mod.
+
+```
+jarvis mod create zlib
+cd $(jarvis mod src zlib)
+wget https://www.zlib.net/zlib-1.3.tar.gz
+tar -xzf zlib-1.3.tar.gz
+cd zlib-1.3
+./configure --prefix=$(jarvis mod root zlib)
+make -j8 install
+```
+
+## jarvis mod create [mod_name (opt)]
+
+Create the package. The following will be created:
+1. ~/.jarvis-mods/packages/mod_name: The directory for storing all data. This path can be derived using $(jarvis mod root [mod_name])
+2. ~/.jarvis-mods/modules/mod_name.tcl. This path can be given from $(jarvis mod tcl [mod_name])
+3. ~/.jarvis-mods/modules/mod_name.yaml. This path can be given from $(jarvis mod yaml [mod_name])
+
+This will also set the current module in the jarvis config
+
+## jarvis mod cd [mod_name]
+
+Set the current module in the jarvis config
+
+## jarvis mod prepend [mod_name (opt)] ...
+
+```
+jarvis mod prepend ENV1="VAL1;VAL2;VALN" ENV2="VAL1;VAL2"
+```
+
+Uses remainder args to set each variable. This example will split the environment variables by ; separator and then prepend to the yaml file.
+
+## jarvis mod setenv [mod_name (opt)] ...
+
+Set environment variables in the module. 
+```
+jarvis mod setenv ENV1=VAL1 ENV2=VAL2
+```
+
+Uses remainder args to set each variable. Will set environment variables equal to the values. Splits the values by ;.
+
+## jarvis mod destroy [mod_name (opt)]
+
+Destroy the module package directory and configuration files
+
+## jarvis mod src [mod_name (opt)]
+
+Print source directory $(jarvis mod root)/src
+
+## jarvis mod root [mod_name (opt)]
+
+Print root directory of module
+
+## The YAML file
+
+It will contain files for defining how to modify various environment variables.
+This will be called 
+
+Exmaple
+```
+deps:
+  ppi-jarvis-util: true
+doc:
+  Name: ppi-jarvis-cd
+  Version: None
+  doc: None
+prepends:
+  CFLAGS: []
+  CMAKE_PREFIX_PATH:
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/cmake
+  CPATH: []
+  INCLUDE: []
+  LDFLAGS: []
+  LD_LIBRARY_PATH:
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+  LIBRARY_PATH:
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+  PATH:
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/sbin
+  PKG_CONFIG_PATH:
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib/pkgconfig
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64/pkgconfig
+  PYTHONPATH:
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
+  - /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+setenvs: {}
+```
+
+## The TCL file
+
+Example:
+```
+#%Module1.0
+module-whatis 'Name: ppi-jarvis-cd'
+module-whatis 'Version: None'
+module-whatis 'doc: None'
+module load ppi-jarvis-util
+prepend-path CMAKE_PREFIX_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/cmake
+prepend-path LD_LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
+prepend-path LD_LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+prepend-path LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
+prepend-path LIBRARY_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+prepend-path PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
+prepend-path PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/sbin
+prepend-path PKG_CONFIG_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib/pkgconfig
+prepend-path PKG_CONFIG_PATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64/pkgconfig
+prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/bin
+prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib
+prepend-path PYTHONPATH /home/llogan/.scspkg/packages/ppi-jarvis-cd/lib64
+```
+
+
+
+## jarvis mod build profile m=[method] path=[path]
+
+This will collect a snapshot of the important environment variables on the system and dump into different formats. Below is a baseline implementation you should analyze:
+```
+def build_profile(self, path=None, method=None):
+        """
+        Create a snapshot of important currently-loaded environment variables.
+
+        :return: None
+        """
+        env_vars = ['PATH', 'LD_LIBRARY_PATH', 'LIBRARY_PATH',
+                    'INCLUDE', 'CPATH', 'PKG_CONFIG_PATH', 'CMAKE_PREFIX_PATH',
+                    'JAVA_HOME', 'PYTHONPATH']
+        profile = {}
+        for env_var in env_vars:
+            env_data = self._get_env(env_var)
+            if len(env_data) == 0:
+                profile[env_var] = []
+            else:
+                profile[env_var] = env_data.split(':')
+        self.env_profile(profile, path, method)
+        return profile
+
+    def env_profile(self, profile, path=None, method='dotenv'):
+        # None-path profiles
+        if method == 'clion':
+                prof_list = [f'{env_var}={":".join(env_data)}'
+                            for env_var, env_data in profile.items()]
+                print(';'.join(prof_list))
+        elif method == 'vscode':
+            vars = [f'  \"{env_var}\": \"{":".join(env_data)}\"' for env_var, env_data in profile.items()]
+            print('\"environment\": {')
+            print(',\n'.join(vars))
+            print('}')
+        if path is None:
+            return
+        
+        # Path-based profiles
+        with open(path, 'w') as f:
+            if method == 'dotenv':
+                for env_var, env_data in profile.items():
+                    f.write(f'{env_var}=\"{":".join(env_data)}\"\n')
+            elif method == 'cmake':
+                for env_var, env_data in profile.items():
+                    f.write(f'set(ENV{{{env_var}}} \"{":".join(env_data)}\")\n')
+```
+
+
