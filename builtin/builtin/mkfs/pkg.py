@@ -3,7 +3,7 @@ This module provides classes and methods to create XFS or EXT4 filesystems.
 """
 from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo
-from jarvis_cd.shell.process import Mkdir
+from jarvis_cd.shell.process import Mkdir, MkfsXfs, MkfsExt4, Mount, Chown, Umount, Rmdir
 import os
 
 
@@ -83,7 +83,7 @@ class Mkfs(Application):
                    LocalExecInfo(env=self.env,
                                 sudo=True),
                    block_size=self.config['block_size'],
-                   force=self.config['force'])
+                   force=self.config['force']).run()
         else:  # ext4
             self.log(f"Creating EXT4 filesystem on {self.config['device']}")
             MkfsExt4(self.config['device'],
@@ -91,7 +91,7 @@ class Mkfs(Application):
                                  sudo=True),
                     block_size=self.config['block_size'],
                     inode_size=self.config['inode_size'],
-                    force=self.config['force'])
+                    force=self.config['force']).run()
 
         # Mount the filesystem if mount point is specified
         if self.config['mount_point']:
@@ -105,7 +105,7 @@ class Mkfs(Application):
                   self.config['mount_point'],
                   LocalExecInfo(env=self.env,
                                sudo=True),
-                  options=['data=ordered'])
+                  options=['data=ordered']).run()
             self.log(f"Mounted filesystem at {self.config['mount_point']}")
 
             # Change ownership to current user
@@ -116,7 +116,7 @@ class Mkfs(Application):
                   uid,
                   gid,
                   LocalExecInfo(env=self.env,
-                               sudo=True))
+                               sudo=True)).run()
 
     def stop(self):
         """
@@ -126,7 +126,7 @@ class Mkfs(Application):
             self.log(f"Unmounting filesystem from {self.config['mount_point']}")
             Umount(self.config['mount_point'],
                    LocalExecInfo(env=self.env,
-                                sudo=True))
+                                sudo=True)).run()
 
     def clean(self):
         """
@@ -140,5 +140,5 @@ class Mkfs(Application):
             self.log(f"Removing mount point directory {self.config['mount_point']}")
             Rmdir(self.config['mount_point'],
                   LocalExecInfo(env=self.env,
-                               sudo=True))
+                               sudo=True)).run()
 
