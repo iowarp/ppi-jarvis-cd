@@ -334,7 +334,7 @@ class JarvisCLI(ArgParse):
         # Package commands
         self.add_menu('pkg', msg="Package management commands")
         
-        self.add_cmd('pkg configure', msg="Configure a package", aliases=['pkg conf'])
+        self.add_cmd('pkg configure', msg="Configure a package", aliases=['pkg conf'], keep_remainder=True)
         self.add_args([
             {
                 'name': 'package_spec',
@@ -537,7 +537,7 @@ class JarvisCLI(ArgParse):
         if self.env_manager is None:
             self.env_manager = EnvironmentManager(self.jarvis_config)
         if self.rg_manager is None:
-            self.rg_manager = ResourceGraphManager(self.jarvis_config)
+            self.rg_manager = ResourceGraphManager()
         if self.pipeline_index_manager is None:
             self.pipeline_index_manager = PipelineIndexManager(self.jarvis_config)
         

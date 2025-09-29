@@ -372,7 +372,7 @@ class Pipeline:
         Configure a specific package in the pipeline.
         
         :param pkg_id: Package ID to configure
-        :param config_args: Configuration arguments
+        :param config_args: Configuration arguments (will be type-converted based on package menu)
         """
         # Find package in pipeline
         pkg_def = None
@@ -388,12 +388,58 @@ class Pipeline:
         pkg_instance = self._load_package_instance(pkg_def, self.env)
         
         try:
-            # Update package configuration
-            pkg_def['config'].update(config_args)
+            # Get package configuration menu for type conversion
+            converted_args = {}
+            if hasattr(pkg_instance, 'configure_menu') and config_args:
+                config_menu = pkg_instance.configure_menu()
+                
+                # Create a type conversion map from the menu
+                type_map = {}
+                for menu_item in config_menu:
+                    param_name = menu_item.get('name')
+                    param_type = menu_item.get('type', str)
+                    if param_name:
+                        type_map[param_name] = param_type
+                
+                # Convert each argument to its proper type
+                for key, value in config_args.items():
+                    if key in type_map:
+                        target_type = type_map[key]
+                        try:
+                            if target_type == bool:
+                                if isinstance(value, str):
+                                    converted_args[key] = value.lower() in ('true', '1', 'yes', 'on')
+                                else:
+                                    converted_args[key] = bool(value)
+                            elif target_type == int:
+                                converted_args[key] = int(value)
+                            elif target_type == float:
+                                converted_args[key] = float(value)
+                            elif target_type == str:
+                                converted_args[key] = str(value)
+                            elif target_type == list:
+                                if isinstance(value, list):
+                                    converted_args[key] = value
+                                else:
+                                    converted_args[key] = [value]
+                            else:
+                                converted_args[key] = value
+                        except (ValueError, TypeError) as e:
+                            print(f"Error converting parameter '{key}' to {target_type.__name__}: {e}")
+                            converted_args[key] = value  # Keep original value on error
+                    else:
+                        # Parameter not in menu, keep as-is
+                        converted_args[key] = value
+            else:
+                # No menu available or no args, use args as-is
+                converted_args = config_args
+            
+            # Update package configuration with converted values
+            pkg_def['config'].update(converted_args)
             
             # Configure the package instance
             if hasattr(pkg_instance, 'configure'):
-                pkg_instance.configure(**config_args)
+                pkg_instance.configure(**converted_args)
                 print(f"Configured package {pkg_id} successfully")
             else:
                 print(f"Package {pkg_id} has no configure method")
@@ -522,8 +568,19 @@ class Pipeline:
                 env_manager = EnvironmentManager(self.jarvis.jarvis_config)
                 self.env = env_manager.load_named_environment(env_name)
             except Exception as e:
-                print(f"Warning: Could not load named environment '{env_name}': {e}")
-                self.env = {}
+                # Named environment doesn't exist - build it automatically
+                print(f"Named environment '{env_name}' does not exist. Building it now...")
+                try:
+                    from jarvis_cd.core.environment import EnvironmentManager
+                    env_manager = EnvironmentManager(self.jarvis.jarvis_config)
+                    # Build the named environment from current environment (no additional args)
+                    env_manager.build_named_environment(env_name, [])
+                    # Now load the newly created environment
+                    self.env = env_manager.load_named_environment(env_name)
+                    print(f"Built named environment '{env_name}' with {len(self.env)} variables")
+                except Exception as build_error:
+                    print(f"Warning: Could not build named environment '{env_name}': {build_error}")
+                    self.env = {}
         elif isinstance(env_field, dict):
             # Inline environment variables
             self.env = env_field

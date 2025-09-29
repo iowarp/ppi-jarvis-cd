@@ -20,13 +20,12 @@ class ResourceGraphManager:
     Manages resource graph collection and analysis across the Jarvis cluster.
     """
     
-    def __init__(self, jarvis_config: JarvisConfig):
+    def __init__(self):
         """
         Initialize resource graph manager.
-        
-        :param jarvis_config: Jarvis configuration manager
+        Gets Jarvis singleton internally.
         """
-        self.jarvis_config = jarvis_config
+        self.jarvis = Jarvis.get_instance()
         self.resource_graph = ResourceGraph()
         
     def build_resource_graph(self, benchmark: bool = True, duration: int = 25):

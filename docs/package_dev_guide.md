@@ -5,39 +5,54 @@ This guide explains how to develop custom packages for Jarvis-CD, including the 
 ## Table of Contents
 
 1. [Repository Structure](#repository-structure)
-2. [Package Types](#package-types)
-3. [Abstract Methods](#abstract-methods)
-4. [Environment Variables](#environment-variables)
-5. [Configuration](#configuration)
-6. [Package Directory Structure](#package-directory-structure)
-7. [Execution System](#execution-system)
-8. [Utility Classes](#utility-classes)
-9. [Interceptor Development](#interceptor-development)
-10. [Implementation Examples](#implementation-examples)
-11. [Best Practices](#best-practices)
+2. [Pipeline Indexes](#pipeline-indexes)
+3. [Package Types](#package-types)
+4. [Abstract Methods](#abstract-methods)
+5. [Environment Variables](#environment-variables)
+6. [Configuration](#configuration)
+7. [Package Directory Structure](#package-directory-structure)
+8. [Execution System](#execution-system)
+9. [Utility Classes](#utility-classes)
+10. [Interceptor Development](#interceptor-development)
+11. [Implementation Examples](#implementation-examples)
+12. [Best Practices](#best-practices)
 
 ## Repository Structure
 
-Jarvis-CD packages are organized in repositories with the following structure:
+Jarvis-CD packages are organized in repositories with a specific structure that supports both packages and pipeline indexes. **IMPORTANT**: All repositories must include a subdirectory with the same name as the repository to be properly recognized by Jarvis-CD.
+
+### Required Repository Structure
 
 ```
 my_repo/
-├── package1/
-│   ├── __init__.py
-│   └── pkg.py          # Main package implementation
-├── package2/
-│   ├── __init__.py
-│   └── pkg.py
-└── __init__.py
+├── my_repo/                  # REQUIRED: subdirectory with same name as repo
+│   ├── package1/
+│   │   ├── __init__.py
+│   │   └── pkg.py            # Main package implementation
+│   ├── package2/
+│   │   ├── __init__.py
+│   │   └── pkg.py
+│   └── __init__.py
+├── pipelines/                # REQUIRED: pipeline index directory
+│   ├── basic_workflow.yaml
+│   ├── performance_test.yaml
+│   ├── examples/
+│   │   ├── simple_demo.yaml
+│   │   └── advanced_demo.yaml
+│   └── io_benchmarks/
+│       ├── ior_test.yaml
+│       └── fio_test.yaml
+└── README.md                 # Optional: repository documentation
 ```
 
 ### Key Requirements
 
-1. **Repository Root**: Contains subdirectories for each package
-2. **Package Directory**: Named after the package (e.g., `ior`, `redis`)
-3. **Main File**: Must be named `pkg.py` (not `package.py`)
-4. **Class Name**: Must follow UpperCamelCase naming convention. For single words use capitalized form (e.g., `Ior`, `Redis`). For snake_case package names, convert to UpperCamelCase (e.g., `data_stagein` → `DataStagein`, `redis_benchmark` → `RedisBenchmark`)
-5. **Init Files**: Include `__init__.py` files for proper Python module structure
+1. **Repository Root**: Contains two main subdirectories: `{repo_name}/` and `pipelines/`
+2. **Package Directory**: Must be `{repo_name}/{package_name}/` (e.g., `my_repo/ior/`, `my_repo/redis/`)
+3. **Pipeline Index Directory**: Must be `pipelines/` for pipeline script discovery
+4. **Main File**: Must be named `pkg.py` (not `package.py`)
+5. **Class Name**: Must follow UpperCamelCase naming convention. For single words use capitalized form (e.g., `Ior`, `Redis`). For snake_case package names, convert to UpperCamelCase (e.g., `data_stagein` → `DataStagein`, `redis_benchmark` → `RedisBenchmark`)
+6. **Init Files**: Include `__init__.py` files for proper Python module structure
 
 ### Package Class Naming Convention
 
@@ -63,6 +78,211 @@ jarvis repo add /path/to/my_repo
 # List registered repositories
 jarvis repo list
 ```
+
+## Pipeline Indexes
+
+Pipeline indexes allow repositories to provide pre-configured pipeline scripts that users can discover, load, and copy. These scripts demonstrate common workflows, provide testing templates, and serve as examples for package usage.
+
+### Pipeline Index Structure
+
+The `pipelines/` directory in your repository serves as the pipeline index. It can contain:
+
+- **YAML Files**: Pipeline scripts that can be loaded directly
+- **Subdirectories**: Organized collections of related pipeline scripts
+- **Nested Structure**: Multiple levels of organization
+
+```
+pipelines/
+├── basic_workflow.yaml           # Simple pipeline script
+├── performance_test.yaml         # Performance testing pipeline
+├── examples/                     # Example pipelines subdirectory
+│   ├── simple_demo.yaml
+│   ├── advanced_demo.yaml
+│   └── multi_node_example.yaml
+├── benchmarks/                   # Benchmark pipelines subdirectory
+│   ├── io_tests/
+│   │   ├── ior_benchmark.yaml
+│   │   └── fio_benchmark.yaml
+│   └── compute_tests/
+│       ├── hpl_benchmark.yaml
+│       └── stream_benchmark.yaml
+└── integration_tests/            # Integration test pipelines
+    ├── full_stack_test.yaml
+    └── component_test.yaml
+```
+
+### Pipeline Index Commands
+
+Users can interact with pipeline indexes using the following commands:
+
+#### List Available Pipeline Scripts
+
+```bash
+# List all pipeline scripts from all repositories
+jarvis ppl index list
+
+# List pipeline scripts from a specific repository
+jarvis ppl index list my_repo
+```
+
+The output shows both files and directories with color coding:
+- **Files**: Default color - these are loadable pipeline scripts
+- **Directories**: Cyan color with "(directory)" label - these contain more scripts
+
+#### Load Pipeline Script from Index
+
+```bash
+# Load a pipeline script directly into the current workspace
+jarvis ppl index load my_repo.examples.simple_demo
+
+# Load from nested directory structure
+jarvis ppl index load my_repo.benchmarks.io_tests.ior_benchmark
+```
+
+#### Copy Pipeline Script from Index
+
+```bash
+# Copy pipeline script to current directory
+jarvis ppl index copy my_repo.examples.simple_demo
+
+# Copy to specific location
+jarvis ppl index copy my_repo.examples.simple_demo /path/to/output/
+
+# Copy to specific filename
+jarvis ppl index copy my_repo.examples.simple_demo ./my_custom_pipeline.yaml
+```
+
+### Creating Pipeline Scripts for Your Repository
+
+When developing packages, include example pipeline scripts that demonstrate:
+
+1. **Basic Usage**: Simple pipeline showing package basics
+2. **Advanced Configuration**: Pipeline with comprehensive configuration options
+3. **Integration Examples**: Pipelines showing how your packages work with others
+4. **Performance Testing**: Pipelines for benchmarking and validation
+5. **Development/Testing**: Pipelines for package development and debugging
+
+#### Example Pipeline Script
+
+```yaml
+# pipelines/examples/basic_usage.yaml
+name: basic_usage_example
+env:
+  # Optional: define environment for this pipeline
+  EXAMPLE_VAR: "value"
+
+pkgs:
+  - pkg_type: my_repo.my_package
+    pkg_name: main_app
+    # Package configuration
+    input_file: "test_input.dat"
+    output_dir: "/tmp/output"
+    threads: 4
+
+interceptors:
+  # Optional: interceptors for monitoring/profiling
+  - pkg_type: builtin.profiler
+    pkg_name: perf_monitor
+    sampling_rate: 1000
+    output_file: "/tmp/profile.out"
+```
+
+### Pipeline Index Best Practices
+
+#### 1. Organize by Purpose
+
+```
+pipelines/
+├── examples/          # Basic usage examples
+├── benchmarks/        # Performance testing
+├── tutorials/         # Step-by-step learning
+├── validation/        # Package validation tests
+└── integration/       # Multi-package workflows
+```
+
+#### 2. Use Descriptive Names
+
+```
+# ✅ Good names
+ior_single_node_test.yaml
+multi_node_mpi_benchmark.yaml
+storage_performance_analysis.yaml
+
+# ❌ Poor names
+test.yaml
+example.yaml
+config.yaml
+```
+
+#### 3. Include Documentation Comments
+
+```yaml
+# Pipeline: I/O Performance Benchmark
+# Purpose: Measures I/O performance using IOR with different block sizes
+# Requirements: MPI environment, shared filesystem
+# Expected Runtime: 10-15 minutes
+name: io_performance_benchmark
+
+# Environment setup for consistent testing
+env:
+  IOR_HINT: "posix"
+  TEST_DIR: "/shared/benchmark"
+
+pkgs:
+  - pkg_type: my_repo.ior
+    pkg_name: ior_test
+    # Test with 1GB files using 4 processes
+    nprocs: 4
+    block: "1G"
+    transfer: "64K"
+    test_file: "${TEST_DIR}/ior_test_file"
+```
+
+#### 4. Provide Multiple Complexity Levels
+
+```
+pipelines/
+├── simple_demo.yaml           # Minimal configuration
+├── intermediate_demo.yaml     # Common options configured
+└── advanced_demo.yaml         # Full configuration showcase
+```
+
+#### 5. Include Validation Pipelines
+
+```yaml
+# pipelines/validation/package_test.yaml
+# Validation pipeline to ensure package works correctly
+name: package_validation
+pkgs:
+  - pkg_type: my_repo.my_package
+    pkg_name: validation_test
+    # Minimal configuration for basic functionality test
+    mode: "validation"
+    quick_test: true
+    expected_output: "test_passed"
+```
+
+### Repository Integration
+
+When users add your repository with `jarvis repo add`, both the packages and pipeline indexes become available:
+
+```bash
+# Add repository (exposes both packages and pipeline indexes)
+jarvis repo add /path/to/my_repo
+
+# Discover packages
+jarvis ppl append my_repo.package_name
+
+# Discover pipeline scripts
+jarvis ppl index list my_repo
+jarvis ppl index load my_repo.examples.basic_usage
+```
+
+This integration provides a complete development ecosystem where users can:
+1. **Discover**: Find available packages and example pipelines
+2. **Learn**: Use example pipelines to understand package capabilities
+3. **Develop**: Copy and modify pipeline scripts for their own use
+4. **Validate**: Use provided test pipelines to verify functionality
 
 ## Package Types
 
@@ -250,10 +470,55 @@ class MyInterceptor(Interceptor):
 
 **Important Notes:**
 - Interceptors use `modify_env()` method, not `start()` 
-- `modify_env()` is called automatically during package configuration
+- `modify_env()` is called automatically during pipeline start (runtime), not configuration
 - Use `setenv()` and `prepend_env()` methods to modify environment variables
-- Changes made in `modify_env()` affect subsequent packages in the pipeline
-- LD_PRELOAD modifications are applied to the `mod_env` dictionary
+- Interceptors share the same `mod_env` reference with the target package
+- LD_PRELOAD modifications directly affect the package's execution environment
+
+### Pipeline-Level Interceptor Architecture - NEW SYSTEM
+
+#### Pipeline YAML Structure
+
+Interceptors are now defined at the pipeline level in a separate `interceptors` section:
+
+```yaml
+name: my_pipeline
+pkgs:
+  - pkg_type: example_app
+    pkg_name: my_app
+    interceptors: ["profiler", "tracer"]  # References to pipeline interceptors
+interceptors:
+  - pkg_type: performance_profiler
+    pkg_name: profiler
+    sampling_rate: 1000
+    output_file: /tmp/profile.out
+  - pkg_type: io_tracer  
+    pkg_name: tracer
+    trace_reads: true
+    trace_writes: true
+```
+
+#### Key Architecture Changes
+
+1. **Pipeline-Level Definition**: Interceptors are defined once in the `interceptors` section
+2. **Package References**: Packages reference interceptors by name in their `interceptors` list
+3. **Runtime Application**: Interceptors are applied during `pipeline.start()`, not configuration
+4. **Shared Environment**: Interceptors and packages share the exact same `mod_env` object
+5. **Unique IDs**: Interceptor IDs must be unique from package IDs within the pipeline
+
+#### Interceptor Lifecycle
+
+```
+Pipeline Start → For Each Package → Apply Referenced Interceptors → Run Package
+                                  ↓
+                           Load Interceptor Instance
+                                  ↓
+                           Share mod_env Reference
+                                  ↓
+                           Call interceptor.modify_env()
+                                  ↓  
+                           Package starts with modified environment
+```
 
 ## Abstract Methods
 
@@ -1385,32 +1650,40 @@ Interceptors work by:
 
 **All interceptors must implement the `modify_env()` method.** This is the primary interface that Jarvis uses to apply interceptor functionality to other packages in the pipeline.
 
-#### How modify_env() Works
+#### How modify_env() Works - NEW ARCHITECTURE
 
-1. **Called Automatically**: Jarvis automatically calls `modify_env()` when processing interceptors during package configuration
-2. **Environment Modification**: The method should use `setenv()`, `prepend_env()`, and other environment methods to modify the execution environment
+1. **Called at Runtime**: Jarvis automatically calls `modify_env()` during `pipeline.start()`, just before each package's `start()` method
+2. **Shared Environment**: Interceptors and packages share the same `mod_env` reference (same pointer)
 3. **LD_PRELOAD Management**: Most interceptors add libraries to `LD_PRELOAD` to inject interception code
 4. **Configuration Setup**: The method can set environment variables that configure the interceptor's behavior
+5. **Per-Package Application**: Each interceptor is applied only to packages that reference it in their `interceptors` list
 
 #### modify_env() vs start()
 
-- **`modify_env()`**: Used by interceptors to modify the environment. Called during package configuration phase.
+- **`modify_env()`**: Used by interceptors to modify the environment. Called during pipeline start, per package.
 - **`start()`**: Used by applications and services to start running. Not typically used by interceptors.
 
 ```python
 class MyInterceptor(Interceptor):
     def modify_env(self):
         """
-        Core interceptor method - modifies environment for interception.
-        Called automatically by Jarvis during package configuration.
-        """
-        # Add interceptor library to LD_PRELOAD
-        self.setenv('LD_PRELOAD', f"{self.interceptor_lib}:{self.mod_env.get('LD_PRELOAD', '')}")
+        Core interceptor method - modifies shared environment for interception.
+        Called automatically during pipeline start, just before package starts.
         
-        # Set interceptor configuration
+        IMPORTANT: self.mod_env is the SAME OBJECT as the target package's mod_env.
+        Any changes made here directly affect the package's execution environment.
+        """
+        # Add interceptor library to LD_PRELOAD (shared with package)
+        current_preload = self.mod_env.get('LD_PRELOAD', '')
+        if current_preload:
+            self.setenv('LD_PRELOAD', f"{self.interceptor_lib}:{current_preload}")
+        else:
+            self.setenv('LD_PRELOAD', self.interceptor_lib)
+        
+        # Set interceptor configuration (shared with package)
         self.setenv('INTERCEPTOR_CONFIG_FILE', f'{self.shared_dir}/interceptor.conf')
         
-        # Not start() - interceptors modify environment, they don't "start" like applications
+        # Changes are immediately visible to the package since mod_env is shared
 ```
 
 ### The find_library() Method
@@ -1781,17 +2054,21 @@ class MemoryDebugger(Interceptor):
 class MyInterceptor(Interceptor):
     def modify_env(self):
         """
-        Required method for all interceptors.
-        This is where environment modification happens.
+        Required method for all interceptors - called during pipeline start.
+        Environment modifications are applied to shared mod_env with target package.
         """
-        # Add libraries to LD_PRELOAD
-        self.setenv('LD_PRELOAD', f"{self.interceptor_lib}:{self.mod_env.get('LD_PRELOAD', '')}")
+        # Add libraries to LD_PRELOAD (shared environment)
+        current_preload = self.mod_env.get('LD_PRELOAD', '')
+        if current_preload:
+            self.setenv('LD_PRELOAD', f"{self.interceptor_lib}:{current_preload}")
+        else:
+            self.setenv('LD_PRELOAD', self.interceptor_lib)
         
-        # Set interceptor configuration environment variables
+        # Set interceptor configuration environment variables (shared)
         self.setenv('INTERCEPTOR_CONFIG', self.config['config_file'])
         
         # Log what was configured
-        self.log(f"Interceptor configured with library: {self.interceptor_lib}")
+        self.log(f"Interceptor applied to package with shared mod_env")
 ```
 
 #### 2. Always Check Library Availability
@@ -2273,6 +2550,92 @@ class MyPackage(Application):
 ```
 
 This guide provides the foundation for developing robust Jarvis-CD packages. For more advanced topics, refer to the existing builtin packages in the `builtin/` directory for real-world examples.
+
+## Working with the New Interceptor Architecture
+
+### Pipeline Commands for Interceptors
+
+```bash
+# Load a pipeline with interceptors
+jarvis ppl load yaml my_pipeline.yaml
+
+# View pipeline configuration (shows both packages and interceptors)
+jarvis ppl print
+
+# Start pipeline (interceptors are applied at runtime)
+jarvis ppl start
+
+# Check pipeline status
+jarvis ppl status
+```
+
+### Example Pipeline with Interceptors
+
+```yaml
+# my_pipeline.yaml
+name: performance_testing
+pkgs:
+  - pkg_type: builtin.ior
+    pkg_name: benchmark
+    interceptors: ["profiler", "tracer"]  # Apply both interceptors
+    nprocs: 4
+    block: "1G"
+interceptors:
+  - pkg_type: builtin.perf_profiler
+    pkg_name: profiler
+    sampling_rate: 1000
+    output_file: /tmp/perf.out
+  - pkg_type: builtin.io_tracer
+    pkg_name: tracer
+    trace_reads: true
+    trace_writes: true
+    min_size: 1024
+```
+
+### Pipeline Output Example
+
+When you run `jarvis ppl print`, you'll see:
+
+```
+Pipeline: performance_testing
+Directory: /home/user/.jarvis/config/pipelines/performance_testing
+Packages:
+  benchmark:
+    Type: builtin.ior
+    Global ID: performance_testing.benchmark
+    Configuration:
+      interceptors: ['profiler', 'tracer']
+      nprocs: 4
+      block: 1G
+Interceptors:
+  profiler:
+    Type: builtin.perf_profiler
+    Global ID: performance_testing.profiler
+    Configuration:
+      sampling_rate: 1000
+      output_file: /tmp/perf.out
+  tracer:
+    Type: builtin.io_tracer
+    Global ID: performance_testing.tracer
+    Configuration:
+      trace_reads: true
+      trace_writes: true
+      min_size: 1024
+```
+
+### Runtime Execution Flow
+
+1. **Pipeline Start**: `jarvis ppl start` is called
+2. **Package Processing**: For each package in the pipeline:
+   - Load package instance
+   - Check `interceptors` list in package configuration
+   - For each referenced interceptor:
+     - Load interceptor instance from pipeline interceptors
+     - Share the same `mod_env` reference between interceptor and package
+     - Call interceptor's `modify_env()` method
+   - Start the package with the modified environment
+
+This architecture ensures that interceptors can modify the exact environment that packages will use, providing seamless interception capabilities.
 
 ## Pipeline Management Commands
 
