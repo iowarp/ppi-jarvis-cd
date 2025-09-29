@@ -3,10 +3,10 @@ import os
 from pathlib import Path
 from jarvis_cd.util.argparse import ArgParse
 from jarvis_cd.core.config import JarvisConfig, Jarvis
-from jarvis_cd.core.pipeline import PipelineManager
+from jarvis_cd.core.pipeline import Pipeline
 from jarvis_cd.core.pipeline_index import PipelineIndexManager
 from jarvis_cd.core.repository import RepositoryManager
-from jarvis_cd.core.package import PackageManager
+from jarvis_cd.core.pkg import Pkg
 from jarvis_cd.core.environment import EnvironmentManager
 from jarvis_cd.core.resource_graph import ResourceGraphManager
 
@@ -20,10 +20,9 @@ class JarvisCLI(ArgParse):
     def __init__(self):
         super().__init__()
         self.jarvis_config = None
-        self.pipeline_manager = None
+        self.current_pipeline = None
         self.pipeline_index_manager = None
         self.repo_manager = None
-        self.pkg_manager = None
         self.env_manager = None
         self.rg_manager = None
         
@@ -298,8 +297,8 @@ class JarvisCLI(ArgParse):
         self.add_cmd('repo remove', msg="Remove a repository from Jarvis", aliases=['repo rm'])
         self.add_args([
             {
-                'name': 'repo_path',
-                'msg': 'Path to repository directory',
+                'name': 'repo_name',
+                'msg': 'Name of repository to remove (not full path)',
                 'type': str,
                 'required': True,
                 'pos': True
@@ -354,6 +353,59 @@ class JarvisCLI(ArgParse):
                 'type': str,
                 'required': True,
                 'pos': True
+            }
+        ])
+        
+        self.add_cmd('pkg path', msg="Show package directory paths")
+        self.add_args([
+            {
+                'name': 'package_spec',
+                'msg': 'Package to show paths for (pkg or repo.pkg)',
+                'type': str,
+                'required': True,
+                'pos': True
+            },
+            {
+                'name': 'conf',
+                'msg': 'Show config.yaml path',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'env',
+                'msg': 'Show env.yaml path',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'mod_env',
+                'msg': 'Show mod_env.yaml path',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'conf_dir',
+                'msg': 'Show config directory path',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'shared_dir',
+                'msg': 'Show shared directory path',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'priv_dir',
+                'msg': 'Show private directory path',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'pkg_dir',
+                'msg': 'Show package source directory path',
+                'type': bool,
+                'default': False
             }
         ])
         
@@ -480,18 +532,23 @@ class JarvisCLI(ArgParse):
             Jarvis.initialize(self.jarvis_config, config_dir, private_dir, shared_dir)
             
         # Initialize managers
-        if self.pipeline_manager is None:
-            self.pipeline_manager = PipelineManager(self.jarvis_config)
         if self.repo_manager is None:
             self.repo_manager = RepositoryManager(self.jarvis_config)
-        if self.pkg_manager is None:
-            self.pkg_manager = PackageManager(self.jarvis_config)
         if self.env_manager is None:
             self.env_manager = EnvironmentManager(self.jarvis_config)
         if self.rg_manager is None:
             self.rg_manager = ResourceGraphManager(self.jarvis_config)
         if self.pipeline_index_manager is None:
             self.pipeline_index_manager = PipelineIndexManager(self.jarvis_config)
+        
+        # Load current pipeline if one exists
+        current_pipeline_name = self.jarvis_config.get_current_pipeline()
+        if current_pipeline_name:
+            try:
+                self.current_pipeline = Pipeline(current_pipeline_name)
+            except Exception:
+                # Pipeline may not exist or be corrupted, continue without it
+                self.current_pipeline = None
     
     def main_menu(self):
         """Handle main menu / help"""
@@ -528,14 +585,27 @@ class JarvisCLI(ArgParse):
         """Create a new pipeline"""
         self._ensure_initialized()
         pipeline_name = self.kwargs['pipeline_name']
-        self.pipeline_manager.create_pipeline(pipeline_name)
+        
+        # Create new pipeline
+        pipeline = Pipeline()
+        pipeline.create(pipeline_name)
+        self.current_pipeline = pipeline
         
     def ppl_append(self):
         """Append package to current pipeline"""
         self._ensure_initialized()
         package_spec = self.kwargs['package_spec']
         package_alias = self.kwargs.get('package_alias')
-        self.pipeline_manager.append_package(package_spec, package_alias)
+        
+        if not self.current_pipeline:
+            # Try to load current pipeline
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline. Create one with 'jarvis ppl create <name>'")
+        
+        self.current_pipeline.append(package_spec, package_alias)
         
     def ppl_run(self):
         """Run pipeline"""
@@ -547,76 +617,288 @@ class JarvisCLI(ArgParse):
             if not pipeline_file:
                 raise ValueError("Pipeline file is required when load_type is 'yaml'")
             # Load and run pipeline file in one command
-            self.pipeline_manager.run_pipeline(load_type, pipeline_file)
+            pipeline = Pipeline()
+            pipeline.run(load_type, pipeline_file)
+            self.current_pipeline = pipeline
         else:
             # Run current pipeline
-            self.pipeline_manager.run_pipeline()
+            if not self.current_pipeline:
+                current_name = self.jarvis_config.get_current_pipeline()
+                if current_name:
+                    self.current_pipeline = Pipeline(current_name)
+                else:
+                    raise ValueError("No current pipeline to run")
+            
+            self.current_pipeline.run()
         
     def ppl_start(self):
         """Start current pipeline"""
         self._ensure_initialized()
-        self.pipeline_manager.start_pipeline()
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline to start")
+        
+        self.current_pipeline.start()
         
     def ppl_stop(self):
         """Stop current pipeline"""
         self._ensure_initialized()
-        self.pipeline_manager.stop_pipeline()
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline to stop")
+        
+        self.current_pipeline.stop()
         
     def ppl_kill(self):
         """Kill current pipeline"""
         self._ensure_initialized()
-        self.pipeline_manager.kill_pipeline()
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline to kill")
+        
+        self.current_pipeline.kill()
         
     def ppl_clean(self):
         """Clean current pipeline"""
         self._ensure_initialized()
-        self.pipeline_manager.clean_pipeline()
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline to clean")
+        
+        self.current_pipeline.clean()
         
     def ppl_status(self):
         """Show pipeline status"""
         self._ensure_initialized()
-        self.pipeline_manager.show_status()
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                print("No current pipeline")
+                return
+        
+        status = self.current_pipeline.status()
+        print(status)
         
     def ppl_load(self):
         """Load pipeline from file"""
         self._ensure_initialized()
         load_type = self.kwargs['load_type']
         pipeline_file = self.kwargs['pipeline_file']
-        self.pipeline_manager.load_pipeline(load_type, pipeline_file)
+        
+        pipeline = Pipeline()
+        pipeline.load(load_type, pipeline_file)
+        self.current_pipeline = pipeline
         
     def ppl_update(self):
         """Update pipeline from last loaded file"""
         self._ensure_initialized()
         update_type = self.kwargs.get('update_type', 'yaml')
-        self.pipeline_manager.update_pipeline(update_type)
+        
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline to update")
+        
+        # For update, we need to reload from the last loaded file
+        if hasattr(self.current_pipeline, 'last_loaded_file') and self.current_pipeline.last_loaded_file:
+            self.current_pipeline.load(update_type, self.current_pipeline.last_loaded_file)
+        else:
+            raise ValueError("No pipeline file to update from")
         
     def ppl_list(self):
         """List all pipelines"""
         self._ensure_initialized()
-        self.pipeline_manager.list_pipelines()
+        
+        pipelines_dir = self.jarvis_config.get_pipelines_dir()
+        
+        if not pipelines_dir.exists():
+            print("No pipelines directory found. Create a pipeline first with 'jarvis ppl create'.")
+            return
+            
+        pipeline_dirs = [d for d in pipelines_dir.iterdir() if d.is_dir()]
+        
+        if not pipeline_dirs:
+            print("No pipelines found. Create a pipeline first with 'jarvis ppl create'.")
+            return
+            
+        current_pipeline_name = self.jarvis_config.get_current_pipeline()
+        
+        print("Available pipelines:")
+        for pipeline_dir in sorted(pipeline_dirs):
+            pipeline_name = pipeline_dir.name
+            config_file = pipeline_dir / 'pipeline.yaml'
+            
+            if config_file.exists():
+                try:
+                    import yaml
+                    with open(config_file, 'r') as f:
+                        pipeline_config = yaml.safe_load(f) or {}
+                    
+                    num_packages = len(pipeline_config.get('packages', []))
+                    marker = "* " if pipeline_name == current_pipeline_name else "  "
+                    print(f"{marker}{pipeline_name} ({num_packages} packages)")
+                    
+                except Exception as e:
+                    marker = "* " if pipeline_name == current_pipeline_name else "  "
+                    print(f"{marker}{pipeline_name} (error reading config: {e})")
+            else:
+                marker = "* " if pipeline_name == current_pipeline_name else "  "
+                print(f"{marker}{pipeline_name} (no config file)")
+                
+        if current_pipeline_name:
+            print(f"\nCurrent pipeline: {current_pipeline_name}")
+        else:
+            print("\nNo current pipeline set. Use 'jarvis cd <pipeline>' to switch.")
         
     def ppl_print(self):
         """Print current pipeline configuration"""
         self._ensure_initialized()
-        self.pipeline_manager.print_current_pipeline()
+        
+        current_pipeline_name = self.jarvis_config.get_current_pipeline()
+        
+        if not current_pipeline_name:
+            print("No current pipeline set. Use 'jarvis cd <pipeline>' to switch.")
+            return
+            
+        if not self.current_pipeline:
+            try:
+                self.current_pipeline = Pipeline(current_pipeline_name)
+            except Exception as e:
+                print(f"Error loading current pipeline: {e}")
+                return
+        
+        print(f"Pipeline: {self.current_pipeline.name}")
+        print(f"Directory: {self.jarvis_config.get_pipeline_dir(current_pipeline_name)}")
+        
+        if self.current_pipeline.packages:
+            print("Packages:")
+            for pkg_def in self.current_pipeline.packages:
+                pkg_id = pkg_def.get('pkg_id', 'unknown')
+                pkg_type = pkg_def.get('pkg_type', 'unknown')
+                global_id = pkg_def.get('global_id', pkg_id)
+                config = pkg_def.get('config', {})
+                
+                print(f"  {pkg_id}:")
+                print(f"    Type: {pkg_type}")
+                print(f"    Global ID: {global_id}")
+                
+                if config:
+                    print("    Configuration:")
+                    for key, value in config.items():
+                        print(f"      {key}: {value}")
+                else:
+                    print("    Configuration: None")
+        else:
+            print("No packages in pipeline")
+        
+        # Print interceptors if they exist
+        if hasattr(self.current_pipeline, 'interceptors') and self.current_pipeline.interceptors:
+            print("Interceptors:")
+            for interceptor_name, interceptor_def in self.current_pipeline.interceptors.items():
+                interceptor_type = interceptor_def.get('pkg_type', 'unknown')
+                global_id = interceptor_def.get('global_id', interceptor_name)
+                config = interceptor_def.get('config', {})
+                
+                print(f"  {interceptor_name}:")
+                print(f"    Type: {interceptor_type}")
+                print(f"    Global ID: {global_id}")
+                
+                if config:
+                    print("    Configuration:")
+                    for key, value in config.items():
+                        print(f"      {key}: {value}")
+                else:
+                    print("    Configuration: None")
+        else:
+            print("No interceptors in pipeline")
+                
+        if hasattr(self.current_pipeline, 'last_loaded_file') and self.current_pipeline.last_loaded_file:
+            print(f"Last loaded from: {self.current_pipeline.last_loaded_file}")
         
     def ppl_rm(self):
         """Remove package from current pipeline"""
         self._ensure_initialized()
         package_spec = self.kwargs['package_spec']
-        self.pipeline_manager.remove_package(package_spec)
+        
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline")
+        
+        self.current_pipeline.rm(package_spec)
         
     def ppl_destroy(self):
         """Destroy a pipeline"""
         self._ensure_initialized()
         pipeline_name = self.kwargs.get('pipeline_name')
-        self.pipeline_manager.destroy_pipeline(pipeline_name)
+        
+        if pipeline_name:
+            # Destroy specific pipeline
+            pipeline = Pipeline()
+            pipeline.destroy(pipeline_name)
+        else:
+            # Destroy current pipeline
+            if not self.current_pipeline:
+                current_name = self.jarvis_config.get_current_pipeline()
+                if current_name:
+                    self.current_pipeline = Pipeline(current_name)
+                else:
+                    print("No current pipeline to destroy. Specify a pipeline name.")
+                    return
+            
+            self.current_pipeline.destroy()
+            self.current_pipeline = None
         
     def cd(self):
         """Change current pipeline"""
         self._ensure_initialized()
         pipeline_name = self.kwargs['pipeline_name']
-        self.pipeline_manager.change_current_pipeline(pipeline_name)
+        
+        pipeline_dir = self.jarvis_config.get_pipeline_dir(pipeline_name)
+        
+        if not pipeline_dir.exists():
+            print(f"Pipeline '{pipeline_name}' not found.")
+            self.ppl_list()
+            return
+            
+        config_file = pipeline_dir / 'pipeline.yaml'
+        if not config_file.exists():
+            print(f"Pipeline '{pipeline_name}' exists but has no configuration file.")
+            print("You may need to recreate this pipeline.")
+            return
+            
+        # Set current pipeline in configuration
+        self.jarvis_config.set_current_pipeline(pipeline_name)
+        
+        # Load the new current pipeline
+        self.current_pipeline = Pipeline(pipeline_name)
+        
+        print(f"Switched to pipeline: {pipeline_name}")
+        
+        # Show basic info about the pipeline
+        try:
+            num_packages = len(self.current_pipeline.packages)
+            print(f"Pipeline has {num_packages} packages")
+        except Exception as e:
+            print(f"Warning: Could not read pipeline configuration: {e}")
         
     def repo_add(self):
         """Add repository"""
@@ -626,10 +908,10 @@ class JarvisCLI(ArgParse):
         self.repo_manager.add_repository(repo_path, force=force)
         
     def repo_remove(self):
-        """Remove repository"""
+        """Remove repository by name"""
         self._ensure_initialized()
-        repo_path = self.kwargs['repo_path']
-        self.repo_manager.remove_repository(repo_path)
+        repo_name = self.kwargs['repo_name']
+        self.repo_manager.remove_repository_by_name(repo_name)
         
     def repo_list(self):
         """List repositories"""
@@ -655,14 +937,136 @@ class JarvisCLI(ArgParse):
                 key, value = arg.split('=', 1)
                 key = key.lstrip('-')  # Remove leading dashes
                 config_args[key] = value
-                
-        self.pkg_manager.configure_package(package_spec, config_args)
+        
+        # Parse package specification
+        if '.' in package_spec:
+            # pipeline.pkg format
+            pipeline_name, pkg_id = package_spec.split('.', 1)
+            pipeline = Pipeline(pipeline_name)
+            pipeline.configure_package(pkg_id, config_args)
+        else:
+            # Just package name - assume current pipeline
+            if not self.current_pipeline:
+                current_name = self.jarvis_config.get_current_pipeline()
+                if current_name:
+                    self.current_pipeline = Pipeline(current_name)
+                else:
+                    raise ValueError("No current pipeline. Specify as pipeline.pkg or create a pipeline first.")
+            
+            self.current_pipeline.configure_package(package_spec, config_args)
         
     def pkg_readme(self):
         """Show package README"""
         self._ensure_initialized()
         package_spec = self.kwargs['package_spec']
-        self.pkg_manager.show_package_readme(package_spec)
+        
+        # Parse package specification
+        if '.' in package_spec:
+            # Check if it's a pipeline.pkg or repo.pkg format
+            parts = package_spec.split('.')
+            if len(parts) == 2:
+                # Could be either pipeline.pkg or repo.pkg
+                # Try to determine based on whether it's an existing pipeline
+                potential_pipeline = parts[0]
+                pipeline_dir = self.jarvis_config.get_pipeline_dir(potential_pipeline)
+                
+                if pipeline_dir.exists():
+                    # It's a pipeline.pkg format
+                    pipeline_name, pkg_id = parts
+                    pipeline = Pipeline(pipeline_name)
+                    pipeline.show_package_readme(pkg_id)
+                else:
+                    # It's a repo.pkg format - load standalone
+                    from jarvis_cd.core.pkg import Pkg
+                    pkg_instance = Pkg.load_standalone(package_spec)
+                    pkg_instance.show_readme()
+            else:
+                # It's a repo.pkg format - load standalone
+                from jarvis_cd.core.pkg import Pkg
+                pkg_instance = Pkg.load_standalone(package_spec)
+                pkg_instance.show_readme()
+        else:
+            # Just package name - could be in current pipeline or standalone
+            if self.current_pipeline or self.jarvis_config.get_current_pipeline():
+                # Try pipeline first
+                if not self.current_pipeline:
+                    current_name = self.jarvis_config.get_current_pipeline()
+                    self.current_pipeline = Pipeline(current_name)
+                
+                try:
+                    self.current_pipeline.show_package_readme(package_spec)
+                except ValueError:
+                    # Package not in pipeline, try standalone
+                    from jarvis_cd.core.pkg import Pkg
+                    pkg_instance = Pkg.load_standalone(package_spec)
+                    pkg_instance.show_readme()
+            else:
+                # No pipeline, load standalone
+                from jarvis_cd.core.pkg import Pkg
+                pkg_instance = Pkg.load_standalone(package_spec)
+                pkg_instance.show_readme()
+        
+    def pkg_path(self):
+        """Show package directory paths"""
+        self._ensure_initialized()
+        package_spec = self.kwargs['package_spec']
+        
+        # Get the requested paths
+        path_flags = {
+            'conf': self.kwargs.get('conf', False),
+            'env': self.kwargs.get('env', False),
+            'mod_env': self.kwargs.get('mod_env', False),
+            'conf_dir': self.kwargs.get('conf_dir', False),
+            'shared_dir': self.kwargs.get('shared_dir', False),
+            'priv_dir': self.kwargs.get('priv_dir', False),
+            'pkg_dir': self.kwargs.get('pkg_dir', False)
+        }
+        
+        # Parse package specification
+        if '.' in package_spec:
+            # Check if it's a pipeline.pkg or repo.pkg format
+            parts = package_spec.split('.')
+            if len(parts) == 2:
+                # Could be either pipeline.pkg or repo.pkg
+                # Try to determine based on whether it's an existing pipeline
+                potential_pipeline = parts[0]
+                pipeline_dir = self.jarvis_config.get_pipeline_dir(potential_pipeline)
+                
+                if pipeline_dir.exists():
+                    # It's a pipeline.pkg format
+                    pipeline_name, pkg_id = parts
+                    pipeline = Pipeline(pipeline_name)
+                    pipeline.show_package_paths(pkg_id, path_flags)
+                else:
+                    # It's a repo.pkg format - load standalone
+                    from jarvis_cd.core.pkg import Pkg
+                    pkg_instance = Pkg.load_standalone(package_spec)
+                    pkg_instance.show_paths(path_flags)
+            else:
+                # It's a repo.pkg format - load standalone
+                from jarvis_cd.core.pkg import Pkg
+                pkg_instance = Pkg.load_standalone(package_spec)
+                pkg_instance.show_paths(path_flags)
+        else:
+            # Just package name - could be in current pipeline or standalone
+            if self.current_pipeline or self.jarvis_config.get_current_pipeline():
+                # Try pipeline first
+                if not self.current_pipeline:
+                    current_name = self.jarvis_config.get_current_pipeline()
+                    self.current_pipeline = Pipeline(current_name)
+                
+                try:
+                    self.current_pipeline.show_package_paths(package_spec, path_flags)
+                except ValueError:
+                    # Package not in pipeline, try standalone
+                    from jarvis_cd.core.pkg import Pkg
+                    pkg_instance = Pkg.load_standalone(package_spec)
+                    pkg_instance.show_paths(path_flags)
+            else:
+                # No pipeline, load standalone
+                from jarvis_cd.core.pkg import Pkg
+                pkg_instance = Pkg.load_standalone(package_spec)
+                pkg_instance.show_paths(path_flags)
         
     def ppl_env_build(self):
         """Build environment for current pipeline"""
@@ -764,6 +1168,8 @@ class JarvisCLI(ArgParse):
         
     def ppl_index_list(self):
         """List available pipeline scripts in indexes"""
+        from jarvis_cd.util.logger import logger, Color
+        
         self._ensure_initialized()
         repo_name = self.kwargs.get('repo_name')
         available_scripts = self.pipeline_index_manager.list_available_scripts(repo_name)
@@ -777,16 +1183,19 @@ class JarvisCLI(ArgParse):
         else:
             print("Available pipeline scripts:")
             
-        for repo, scripts in available_scripts.items():
+        for repo, entries in available_scripts.items():
             if repo_name and repo != repo_name:
                 continue
             if not repo_name:
                 print(f"  {repo}:")
-            for script in scripts:
-                if repo_name:
-                    print(f"  {script}")
-                else:
-                    print(f"    {script}")
+            for entry in entries:
+                indent = "  " if repo_name else "    "
+                if entry['type'] == 'file':
+                    # Print files in default color
+                    print(f"{indent}{entry['name']}")
+                elif entry['type'] == 'directory':
+                    # Print directories in cyan color with (directory) label
+                    logger.print(Color.CYAN, f"{indent}{entry['name']} (directory)")
 
 
 def main():

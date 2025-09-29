@@ -95,12 +95,12 @@ class PipelineIndexManager:
             
         return None
         
-    def list_available_scripts(self, repo_name: Optional[str] = None) -> Dict[str, List[str]]:
+    def list_available_scripts(self, repo_name: Optional[str] = None) -> Dict[str, List[Dict[str, str]]]:
         """
         List all available pipeline scripts in indexes.
         
         :param repo_name: Optional specific repo to list, or None for all repos
-        :return: Dictionary mapping repo names to lists of available scripts
+        :return: Dictionary mapping repo names to lists of entry dictionaries with 'name' and 'type' keys
         """
         available_scripts = {}
         
@@ -129,20 +129,21 @@ class PipelineIndexManager:
             if not pipelines_dir.exists():
                 continue
                 
-            scripts = []
-            self._scan_pipeline_directory(pipelines_dir, scripts, repo_name)
+            entries = []
+            self._scan_pipeline_directory(pipelines_dir, entries, repo_name)
             
-            if scripts:
-                available_scripts[repo_name] = sorted(scripts)
+            if entries:
+                # Sort by name
+                available_scripts[repo_name] = sorted(entries, key=lambda x: x['name'])
                 
         return available_scripts
         
-    def _scan_pipeline_directory(self, directory: Path, scripts: List[str], repo_name: str, current_path: str = ""):
+    def _scan_pipeline_directory(self, directory: Path, entries: List[Dict[str, str]], repo_name: str, current_path: str = ""):
         """
-        Recursively scan a pipeline directory for .yaml files.
+        Recursively scan a pipeline directory for .yaml files and directories.
         
         :param directory: Directory to scan
-        :param scripts: List to append found scripts to
+        :param entries: List to append found entries to
         :param repo_name: Name of the repository
         :param current_path: Current path within the pipelines directory
         """
@@ -155,14 +156,21 @@ class PipelineIndexManager:
                         index_query = f"{repo_name}.{current_path}.{script_name}"
                     else:
                         index_query = f"{repo_name}.{script_name}"
-                    scripts.append(index_query)
+                    entries.append({'name': index_query, 'type': 'file'})
                 elif item.is_dir():
+                    # Add directory entry
+                    if current_path:
+                        dir_query = f"{repo_name}.{current_path}.{item.name}"
+                    else:
+                        dir_query = f"{repo_name}.{item.name}"
+                    entries.append({'name': dir_query, 'type': 'directory'})
+                    
                     # Recursively scan subdirectory
                     if current_path:
                         new_path = f"{current_path}.{item.name}"
                     else:
                         new_path = item.name
-                    self._scan_pipeline_directory(item, scripts, repo_name, new_path)
+                    self._scan_pipeline_directory(item, entries, repo_name, new_path)
         except (OSError, PermissionError):
             # Skip directories we can't read
             pass
@@ -180,12 +188,12 @@ class PipelineIndexManager:
             self._print_available_scripts()
             return
             
-        # Use PipelineManager to load the script
-        from jarvis_cd.core.pipeline import PipelineManager
-        pipeline_manager = PipelineManager(self.jarvis_config)
+        # Use Pipeline class to load the script
+        from jarvis_cd.core.pipeline import Pipeline
         
         try:
-            pipeline_manager.load_pipeline('yaml', str(script_path))
+            pipeline = Pipeline()
+            pipeline.load('yaml', str(script_path))
             print(f"Loaded pipeline from index: {index_query}")
         except Exception as e:
             print(f"Error loading pipeline from index '{index_query}': {e}")
@@ -230,6 +238,8 @@ class PipelineIndexManager:
         """
         Print available pipeline scripts to help user with valid index queries.
         """
+        from jarvis_cd.util.logger import logger, Color
+        
         available_scripts = self.list_available_scripts()
         
         if not available_scripts:
@@ -237,7 +247,12 @@ class PipelineIndexManager:
             return
             
         print("Available pipeline scripts:")
-        for repo_name, scripts in available_scripts.items():
+        for repo_name, entries in available_scripts.items():
             print(f"  {repo_name}:")
-            for script in scripts:
-                print(f"    {script}")
+            for entry in entries:
+                if entry['type'] == 'file':
+                    # Print files in default color
+                    print(f"    {entry['name']}")
+                elif entry['type'] == 'directory':
+                    # Print directories in cyan color
+                    logger.print(Color.CYAN, f"    {entry['name']} (directory)")

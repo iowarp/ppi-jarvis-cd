@@ -1,4 +1,4 @@
-from jarvis_cd.basic.pkg import Color
+from jarvis_cd.core.pkg import Color
 from jarvis_cd.shell import Exec, SshExecInfo, PsshExecInfo
 from jarvis_cd.shell.process import Kill
 

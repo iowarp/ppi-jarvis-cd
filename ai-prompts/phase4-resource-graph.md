@@ -38,9 +38,9 @@ fs:
   model: Samsung SSD 860
   mount: /mnt/ssd/${USER}
   parent: /dev/sdb
-  shared: false
-  uuid: 45b6abb3-7786-4b68-95d0-a8fac92e0d70
-  needs_root: false
-  4k_randwrite_bw: 8mbps
+  shared: false  # is this a PFS or local storage? 
+  needs_root: false  # can the user read /write here?
+  4k_randwrite_bw: 8mbps  
   1m_seqwrite_bw: 1000mbps
 ```
+

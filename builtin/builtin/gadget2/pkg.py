@@ -2,7 +2,7 @@
 This module provides classes and methods to launch the Gadget2 application.
 Gadget2 is ....
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo
 from jarvis_cd.shell.process import Mkdir, Rm
 

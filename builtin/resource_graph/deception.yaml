@@ -19,15 +19,4 @@ fs:
   parent: null
   shared: true
   uuid: null
-hosts:
-- localhost
-net:
-- domain: mlx5_0:1
-  fabric: 172.17.0.0/16
-  protocol: FI_PROTO_SOCK_TCP
-  provider: ucx+rc_verbs
-  shared: true
-  speed: 12884901888
-  type: FI_EP_MSG
-  version: '116.10'
 

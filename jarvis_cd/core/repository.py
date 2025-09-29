@@ -58,6 +58,24 @@ class RepositoryManager:
         # Also clean up any other non-existent repositories while we're at it
         self.jarvis_config.cleanup_nonexistent_repos()
         
+    def remove_repository_by_name(self, repo_name: str):
+        """
+        Remove all repositories with the given name from Jarvis.
+        
+        :param repo_name: Name of repository to remove (not full path)
+        :return: Number of repositories removed
+        """
+        # Automatically clean up non-existent repositories first
+        self.jarvis_config.cleanup_nonexistent_repos()
+        
+        # Remove repositories by name
+        removed_count = self.jarvis_config.remove_repo_by_name(repo_name)
+        
+        # Clean up any other non-existent repositories while we're at it
+        self.jarvis_config.cleanup_nonexistent_repos()
+        
+        return removed_count
+        
     def list_repositories(self):
         """List all registered repositories"""
         # Automatically clean up non-existent repositories
@@ -152,7 +170,7 @@ class RepositoryManager:
 {class_name} service package for Jarvis-CD.
 This is a long-running service that needs to be manually stopped.
 """
-from jarvis_cd.basic.pkg import Service
+from jarvis_cd.core.pkg import Service
 
 
 class {class_name}(Service):
@@ -294,7 +312,7 @@ class {class_name}(Service):
 {class_name} application package for Jarvis-CD.
 This is an application that runs and completes automatically.
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 
 
 class {class_name}(Application):
@@ -434,7 +452,7 @@ class {class_name}(Application):
 {class_name} interceptor package for Jarvis-CD.
 This modifies environment variables to intercept system/library calls.
 """
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 
 
 class {class_name}(Interceptor):

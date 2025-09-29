@@ -1,17 +1,11 @@
 name: test_interceptor_from_index
 pkgs:
-  - pkg_type: builtin.ior
-    pkg_name: ior_with_interceptor
-    block: 8m
-    xfer: 256k
-    api: posix
-    write: true
-    read: false
-    fpp: false
-    reps: 1
-    nprocs: 1
-    ppn: 1
-    out: /tmp/ior_interceptor.bin
-    do_dbg: false
-    dbg_port: 4000
-    interceptors: ["example_app"]
+  - pkg_type: example_app
+    pkg_name: example_app 
+    interceptors: ["example_interceptor"]
+interceptors:
+  - pkg_type: example_interceptor
+    pkg_name: example_interceptor
+    library_path: /usr/lib/example_interceptor.so
+    custom_env_var: test_intercepted_value
+    debug_mode: true

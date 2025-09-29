@@ -217,6 +217,37 @@ class JarvisConfig:
             print(f"Removed repository: {repo_path}")
         else:
             print(f"Repository not found: {repo_path}")
+            
+    def remove_repo_by_name(self, repo_name: str):
+        """
+        Remove all repositories with the given name from the repos configuration.
+        
+        :param repo_name: Name of repository to remove
+        :return: Number of repositories removed
+        """
+        repos = self.repos.copy()
+        initial_count = len(repos['repos'])
+        removed_repos = []
+        
+        # Find all repositories with matching name
+        remaining_repos = []
+        for repo_path in repos['repos']:
+            if Path(repo_path).name == repo_name:
+                removed_repos.append(repo_path)
+            else:
+                remaining_repos.append(repo_path)
+        
+        if removed_repos:
+            repos['repos'] = remaining_repos
+            self.save_repos(repos)
+            
+            print(f"Removed {len(removed_repos)} repository(ies) named '{repo_name}':")
+            for repo_path in removed_repos:
+                print(f"  - {repo_path}")
+        else:
+            print(f"No repositories found with name '{repo_name}'")
+            
+        return len(removed_repos)
     
     def cleanup_nonexistent_repos(self):
         """Remove any repositories from configuration that no longer exist on disk"""

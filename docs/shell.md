@@ -354,7 +354,7 @@ Echo("Processing complete", LocalExecInfo()).run()
 ### Basic Package Implementation
 
 ```python
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo
 from jarvis_cd.shell.process import Which, Mkdir, Rm
 
@@ -404,7 +404,7 @@ class MyBenchmark(Application):
 ### Interceptor Implementation
 
 ```python
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 from jarvis_cd.shell.process import Which
 
 class ProfilingInterceptor(Interceptor):

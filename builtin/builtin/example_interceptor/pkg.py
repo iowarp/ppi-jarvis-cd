@@ -2,7 +2,7 @@
 Example Interceptor package for testing interceptor functionality
 """
 
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 import os
 
 

@@ -1,6 +1,4 @@
 pyyaml
-pandas
-jarvis-util @ git+https://github.com/scs-lab/jarvis-util.git#egg=jarvis-util
 #pylint==2.15.0
 #coverage==5.5
 #coverage-lcov==0.2.4

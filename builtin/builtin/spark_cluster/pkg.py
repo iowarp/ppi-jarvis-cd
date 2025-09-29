@@ -3,7 +3,7 @@ This module provides classes and methods to launch the SparkCluster service.
 SparkCluster is ....
 """
 
-from jarvis_cd.basic.pkg import Service
+from jarvis_cd.core.pkg import Service
 from jarvis_cd.shell import Exec, PsshExecInfo
 
 

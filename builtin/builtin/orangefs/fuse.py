@@ -1,4 +1,4 @@
-from jarvis_cd.basic.pkg import Service, Color
+from jarvis_cd.core.pkg import Service, Color
 from jarvis_cd.shell import Exec, SshExecInfo, PsshExecInfo
 from jarvis_cd.shell.process import Kill
 from jarvis_cd.util.hostfile import Hostfile

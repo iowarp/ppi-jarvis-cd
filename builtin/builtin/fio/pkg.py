@@ -2,7 +2,7 @@
 This module provides classes and methods to launch the Ior application.
 Ior is ....
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo
 from jarvis_cd.shell.process import Rm
 import os

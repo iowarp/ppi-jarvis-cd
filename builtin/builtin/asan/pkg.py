@@ -2,7 +2,7 @@
 This module provides classes and methods to inject the Asan interceptor.
 Asan is a library to detect memory errors.
 """
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 
 
 class Asan(Interceptor):

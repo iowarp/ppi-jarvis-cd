@@ -73,7 +73,7 @@ Jarvis-CD provides several base classes for different types of packages:
 **Most common base class** - Use this for packages that need interceptor support. Most builtin packages inherit from this.
 
 ```python
-from jarvis_cd.basic.pkg import SimplePackage
+from jarvis_cd.core.pkg import SimplePackage
 
 class MyPackage(SimplePackage):
     def _init(self):
@@ -111,7 +111,7 @@ class MyPackage(SimplePackage):
 For applications that run and complete automatically (e.g., benchmarks, data processing tools).
 
 ```python
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 
 class MyApp(Application):
     def _init(self):
@@ -145,7 +145,7 @@ class MyApp(Application):
 For long-running services that need manual stopping (e.g., databases, web servers).
 
 ```python
-from jarvis_cd.basic.pkg import Service
+from jarvis_cd.core.pkg import Service
 
 class MyService(Service):
     def _init(self):
@@ -178,12 +178,16 @@ class MyService(Service):
         return "running"
 ```
 
-### 4. Interceptor (jarvis_cd.basic.pkg.Interceptor)
+### 4. Interceptor (jarvis_cd.core.pkg.Interceptor)
 
 For packages that modify environment variables to intercept system calls (e.g., profiling tools, I/O interceptors). Interceptors work by modifying `LD_PRELOAD` and other environment variables to inject custom libraries into target applications.
 
+**Key Method: `modify_env()`**
+Interceptors must implement the `modify_env()` method, which is automatically called by Jarvis to modify the environment before other packages run. This method should use `setenv()` and `prepend_env()` to modify environment variables, particularly `LD_PRELOAD`.
+
 ```python
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
+import os
 
 class MyInterceptor(Interceptor):
     def _init(self):
@@ -197,13 +201,19 @@ class MyInterceptor(Interceptor):
                 'msg': 'Path to interceptor library',
                 'type': str,
                 'default': '/usr/lib/libinterceptor.so'
+            },
+            {
+                'name': 'enable_tracing',
+                'msg': 'Enable detailed tracing',
+                'type': bool,
+                'default': False
             }
         ]
     
     def _configure(self, **kwargs):
         # Configuration automatically updated
         
-        # Find the interceptor library
+        # Find the interceptor library using the built-in find_library method
         lib_path = self.find_library('interceptor')
         if not lib_path:
             lib_path = self.config['library_path']
@@ -212,8 +222,15 @@ class MyInterceptor(Interceptor):
             raise FileNotFoundError(f"Interceptor library not found: {lib_path}")
             
         self.interceptor_lib = lib_path
+        self.log(f"Found interceptor library: {lib_path}")
     
     def modify_env(self):
+        """
+        Modify environment for interception - called automatically by Jarvis.
+        
+        This method is where interceptors set up LD_PRELOAD and other environment
+        variables needed for interception to work.
+        """
         # Add interceptor library to LD_PRELOAD
         current_preload = self.mod_env.get('LD_PRELOAD', '')
         if current_preload:
@@ -222,11 +239,21 @@ class MyInterceptor(Interceptor):
             new_preload = self.interceptor_lib
             
         self.setenv('LD_PRELOAD', new_preload)
-    
-    def start(self):
-        # Automatically calls modify_env()
-        super().start()
+        
+        # Set interceptor configuration environment variables
+        if self.config['enable_tracing']:
+            self.setenv('INTERCEPTOR_TRACE', '1')
+            self.setenv('INTERCEPTOR_TRACE_FILE', f'{self.shared_dir}/trace.log')
+        
+        self.log(f"Interceptor environment configured with LD_PRELOAD: {new_preload}")
 ```
+
+**Important Notes:**
+- Interceptors use `modify_env()` method, not `start()` 
+- `modify_env()` is called automatically during package configuration
+- Use `setenv()` and `prepend_env()` methods to modify environment variables
+- Changes made in `modify_env()` affect subsequent packages in the pipeline
+- LD_PRELOAD modifications are applied to the `mod_env` dictionary
 
 ## Abstract Methods
 
@@ -1109,6 +1136,240 @@ class DatabaseApp(Service):
 
 The SizeType class makes it easy to handle size specifications in a user-friendly way while ensuring consistent binary calculations throughout your packages.
 
+### Package Utility Methods
+
+All package classes inherit several utility methods from the base `Pkg` class that provide common functionality for logging, timing, and file processing.
+
+#### log() - Colored Logging
+
+The `log()` method provides colored console output with package context for debugging and status messages.
+
+```python
+def log(self, message, color=None):
+    """
+    Log a message with package context and optional color.
+    
+    :param message: Message to log
+    :param color: Color to use (from jarvis_cd.util.logger.Color enum), defaults to package color
+    """
+```
+
+##### Usage Examples
+
+```python
+from jarvis_cd.util.logger import Color
+
+class MyPackage(Application):
+    def start(self):
+        # Default package color (light green)
+        self.log("Starting application")
+        
+        # Custom colors for different message types
+        self.log("Configuration loaded successfully", Color.GREEN)
+        self.log("Warning: Using default settings", Color.YELLOW)
+        self.log("Error: Failed to connect", Color.RED)
+        self.log("Debug information", Color.LIGHT_BLACK)
+        
+        # Available colors include:
+        # Color.RED, Color.GREEN, Color.YELLOW, Color.BLUE
+        # Color.MAGENTA, Color.CYAN, Color.WHITE
+        # Color.LIGHT_RED, Color.LIGHT_GREEN, etc.
+```
+
+##### Output Format
+
+Messages are automatically formatted with the package class name:
+```
+[MyPackage] Starting application
+[MyPackage] Configuration loaded successfully
+```
+
+#### sleep() - Configurable Delays
+
+The `sleep()` method provides configurable delays with logging, useful for testing, synchronization, or rate limiting.
+
+```python
+def sleep(self, time_sec=None):
+    """
+    Sleep for a specified amount of time.
+    
+    :param time_sec: Time to sleep in seconds. If not provided, uses self.config['sleep']
+    """
+```
+
+##### Usage Examples
+
+```python
+class MyPackage(Application):
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'startup_delay',
+                'msg': 'Delay before starting (seconds)',
+                'type': int,
+                'default': 5
+            }
+        ]
+    
+    def start(self):
+        # Use explicit delay
+        self.log("Waiting 3 seconds before startup")
+        self.sleep(3)
+        
+        # Use configured delay (from self.config['sleep'])
+        self.sleep()  # Uses default 'sleep' parameter from common menu
+        
+        # Use custom configuration parameter
+        delay = self.config.get('startup_delay', 0)
+        if delay > 0:
+            self.log(f"Startup delay: {delay} seconds")
+            self.sleep(delay)
+```
+
+##### Configuration Integration
+
+The `sleep` parameter is automatically available in all package configuration menus:
+
+```bash
+# Configure sleep time
+jarvis pkg conf mypackage sleep=10
+
+# The package can then use self.sleep() to sleep for 10 seconds
+```
+
+#### copy_template_file() - Template Processing
+
+The `copy_template_file()` method copies files while replacing template constants, useful for generating configuration files from templates.
+
+```python
+def copy_template_file(self, source_path, dest_path, replacements=None):
+    """
+    Copy a template file from source to destination, replacing template constants.
+    
+    Template constants have the format ##CONSTANT_NAME## and are replaced with
+    values from the replacements dictionary.
+    
+    :param source_path: Path to the source template file
+    :param dest_path: Path where the processed file should be saved
+    :param replacements: Dictionary of replacements {CONSTANT_NAME: value}
+    """
+```
+
+##### Template Format
+
+Template constants use the format `##CONSTANT_NAME##`:
+
+```xml
+<!-- Template file: config/server.xml -->
+<server>
+    <hostname>##HOSTNAME##</hostname>
+    <port>##PORT##</port>
+    <threads>##THREAD_COUNT##</threads>
+    <memory>##MEMORY_LIMIT##</memory>
+</server>
+```
+
+##### Usage Examples
+
+```python
+class MyPackage(Service):
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'hostname',
+                'msg': 'Server hostname',
+                'type': str,
+                'default': 'localhost'
+            },
+            {
+                'name': 'port',
+                'msg': 'Server port',
+                'type': int,
+                'default': 8080
+            },
+            {
+                'name': 'threads',
+                'msg': 'Number of worker threads',
+                'type': int,
+                'default': 4
+            }
+        ]
+    
+    def _configure(self, **kwargs):
+        # Generate configuration file from template
+        config_file = f"{self.shared_dir}/server.xml"
+        
+        self.copy_template_file(
+            source_path=f"{self.pkg_dir}/config/server.xml.template",
+            dest_path=config_file,
+            replacements={
+                'HOSTNAME': self.config['hostname'],
+                'PORT': self.config['port'],
+                'THREAD_COUNT': self.config['threads'],
+                'MEMORY_LIMIT': '2G'
+            }
+        )
+        
+        self.log(f"Generated configuration: {config_file}")
+```
+
+##### Result
+
+After processing, the template becomes:
+
+```xml
+<!-- Generated file: shared_dir/server.xml -->
+<server>
+    <hostname>localhost</hostname>
+    <port>8080</port>
+    <threads>4</threads>
+    <memory>2G</memory>
+</server>
+```
+
+##### Advanced Usage
+
+```python
+def _configure(self, **kwargs):
+    # Use pkg_dir for template source directory
+    template_dir = f"{self.pkg_dir}/templates"
+    output_dir = self.shared_dir
+    
+    # Common replacements for multiple files
+    common_vars = {
+        'USER': os.environ.get('USER', 'unknown'),
+        'HOSTNAME': socket.gethostname(),
+        'TIMESTAMP': datetime.now().isoformat(),
+        'PID': os.getpid()
+    }
+    
+    # Process multiple template files
+    templates = [
+        ('config.xml.template', 'config.xml'),
+        ('startup.sh.template', 'startup.sh'),
+        ('logging.conf.template', 'logging.conf')
+    ]
+    
+    for template_name, output_name in templates:
+        self.copy_template_file(
+            source_path=f"{template_dir}/{template_name}",
+            dest_path=f"{output_dir}/{output_name}",
+            replacements={
+                **common_vars,  # Include common variables
+                'SERVICE_NAME': self.config['service_name'],
+                'LOG_LEVEL': self.config.get('log_level', 'INFO')
+            }
+        )
+```
+
+##### Error Handling
+
+The method automatically:
+- Creates destination directories if they don't exist
+- Provides clear error messages for missing template files
+- Logs successful operations with replacement counts
+- Raises exceptions for template or I/O errors
+
 ## Interceptor Development
 
 Interceptors are specialized packages that modify the execution environment to intercept system calls, library calls, or I/O operations. They are commonly used for profiling, monitoring, debugging, and performance analysis.
@@ -1119,6 +1380,38 @@ Interceptors work by:
 1. **Library Injection**: Adding shared libraries to `LD_PRELOAD`
 2. **Environment Modification**: Setting environment variables for interceptor configuration
 3. **Call Interception**: Using library preloading to override system/library functions
+
+### The modify_env() Method - Core Interceptor Interface
+
+**All interceptors must implement the `modify_env()` method.** This is the primary interface that Jarvis uses to apply interceptor functionality to other packages in the pipeline.
+
+#### How modify_env() Works
+
+1. **Called Automatically**: Jarvis automatically calls `modify_env()` when processing interceptors during package configuration
+2. **Environment Modification**: The method should use `setenv()`, `prepend_env()`, and other environment methods to modify the execution environment
+3. **LD_PRELOAD Management**: Most interceptors add libraries to `LD_PRELOAD` to inject interception code
+4. **Configuration Setup**: The method can set environment variables that configure the interceptor's behavior
+
+#### modify_env() vs start()
+
+- **`modify_env()`**: Used by interceptors to modify the environment. Called during package configuration phase.
+- **`start()`**: Used by applications and services to start running. Not typically used by interceptors.
+
+```python
+class MyInterceptor(Interceptor):
+    def modify_env(self):
+        """
+        Core interceptor method - modifies environment for interception.
+        Called automatically by Jarvis during package configuration.
+        """
+        # Add interceptor library to LD_PRELOAD
+        self.setenv('LD_PRELOAD', f"{self.interceptor_lib}:{self.mod_env.get('LD_PRELOAD', '')}")
+        
+        # Set interceptor configuration
+        self.setenv('INTERCEPTOR_CONFIG_FILE', f'{self.shared_dir}/interceptor.conf')
+        
+        # Not start() - interceptors modify environment, they don't "start" like applications
+```
 
 ### The find_library() Method
 
@@ -1228,7 +1521,7 @@ def remove_from_preload(self, library_path: str):
 #### Performance Profiler Interceptor
 
 ```python
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 import os
 
 class PerfProfiler(Interceptor):
@@ -1275,6 +1568,7 @@ class PerfProfiler(Interceptor):
         self.setenv('PROFILER_SAMPLE_RATE', str(self.config['sample_rate']))
     
     def modify_env(self):
+        """Modify environment for profiling interception"""
         # Add profiler to LD_PRELOAD
         self.add_to_preload(self.profiler_path)
         self.log(f"Added profiler to LD_PRELOAD: {self.profiler_path}")
@@ -1295,7 +1589,7 @@ class PerfProfiler(Interceptor):
 #### I/O Tracing Interceptor
 
 ```python
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 import os
 
 class IOTracer(Interceptor):
@@ -1351,6 +1645,7 @@ class IOTracer(Interceptor):
         self.setenv('IOTRACE_MIN_SIZE', str(self.config['min_size']))
         
     def modify_env(self):
+        """Modify environment for I/O tracing interception"""
         # Add I/O tracer to LD_PRELOAD
         current_preload = self.mod_env.get('LD_PRELOAD', '')
         if current_preload:
@@ -1374,7 +1669,7 @@ class IOTracer(Interceptor):
 #### Memory Debugging Interceptor
 
 ```python
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 
 class MemoryDebugger(Interceptor):
     """Memory debugging interceptor using AddressSanitizer or Valgrind"""
@@ -1429,6 +1724,7 @@ class MemoryDebugger(Interceptor):
         os.makedirs(self.config['output_dir'], exist_ok=True)
         
     def modify_env(self):
+        """Modify environment for memory debugging interception"""
         tool = self.config['tool']
         output_dir = self.config['output_dir']
         
@@ -1479,7 +1775,26 @@ class MemoryDebugger(Interceptor):
 
 ### Interceptor Best Practices
 
-#### 1. Always Check Library Availability
+#### 1. Always Implement modify_env() Method
+
+```python
+class MyInterceptor(Interceptor):
+    def modify_env(self):
+        """
+        Required method for all interceptors.
+        This is where environment modification happens.
+        """
+        # Add libraries to LD_PRELOAD
+        self.setenv('LD_PRELOAD', f"{self.interceptor_lib}:{self.mod_env.get('LD_PRELOAD', '')}")
+        
+        # Set interceptor configuration environment variables
+        self.setenv('INTERCEPTOR_CONFIG', self.config['config_file'])
+        
+        # Log what was configured
+        self.log(f"Interceptor configured with library: {self.interceptor_lib}")
+```
+
+#### 2. Always Check Library Availability
 
 ```python
 def _configure(self, **kwargs):
@@ -1574,7 +1889,7 @@ def clean(self):
 """
 Simple benchmark application package.
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo
 import os
 
@@ -1635,7 +1950,7 @@ class SimpleBench(Application):
 """
 MPI-based parallel application package.
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo
 from jarvis_cd.shell.process import Rm
 import os
@@ -1699,7 +2014,7 @@ class ParallelApp(Application):
 """
 Database service package.
 """
-from jarvis_cd.basic.pkg import Service
+from jarvis_cd.core.pkg import Service
 from jarvis_cd.shell import Exec, LocalExecInfo
 from jarvis_cd.shell.process import Kill, Which
 import os
@@ -1792,7 +2107,7 @@ class Database(Service):
 """
 Performance profiling interceptor package.
 """
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 import os
 
 class Profiler(Interceptor):
@@ -1829,7 +2144,7 @@ class Profiler(Interceptor):
         self.setenv('PROFILER_OUTPUT', self.config['output_file'])
     
     def modify_env(self):
-        """Set up profiling environment"""
+        """Modify environment for profiling interception"""
         # Add profiler library to LD_PRELOAD
         if os.path.exists(self.profiler_lib):
             current_preload = self.mod_env.get('LD_PRELOAD', '')

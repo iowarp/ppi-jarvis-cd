@@ -2,7 +2,7 @@
 This module provides classes and methods to launch Redis.
 Redis cluster is used if the hostfile has many hosts
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo
 
 

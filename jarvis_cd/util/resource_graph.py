@@ -4,6 +4,7 @@ Manages storage resource collection and analysis across nodes.
 """
 import json
 import yaml
+import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set
 from collections import defaultdict
@@ -196,20 +197,19 @@ class ResourceGraph:
         :param output_path: Path to save file
         :param format: Output format ('yaml' or 'json')
         """
-        # Convert to serializable format
-        data = {
-            'nodes': {},
-            'common_mounts': {},
-            'summary': self.get_storage_summary()
-        }
+        # Convert to serializable format - only store common mount points
+        fs_data = []
         
-        # Add node data
-        for hostname, devices in self.nodes.items():
-            data['nodes'][hostname] = [device.to_dict() for device in devices]
-            
-        # Add common mounts
+        # Only store common mount points (accessible across nodes or single node)
         for mount_point, devices in self.common_mounts.items():
-            data['common_mounts'][mount_point] = [device.to_dict() for device in devices]
+            # Use the first device as representative of the mount point
+            if devices:
+                device_dict = devices[0].to_dict()
+                # Remove hostname-specific information
+                device_dict.pop('hostname', None)
+                fs_data.append(device_dict)
+        
+        data = {'fs': fs_data}
             
         # Save to file
         with open(output_path, 'w') as f:
@@ -236,12 +236,24 @@ class ResourceGraph:
         self.nodes = {}
         self.common_mounts = {}
         
-        # Load node data
-        for hostname, device_list in data.get('nodes', {}).items():
+        # Handle resource graph format with 'fs' section
+        if 'fs' in data:
+            # Determine hostname for resource graph files
+            hostname = input_path.stem  # Use filename as hostname
             self.nodes[hostname] = []
-            for device_data in device_list:
+            
+            for device_data in data['fs']:
+                # Expand environment variables in mount paths
+                mount_path = device_data.get('mount', '')
+                if mount_path:
+                    mount_path = os.path.expandvars(mount_path)
+                    device_data = device_data.copy()
+                    device_data['mount'] = mount_path
+                
                 device = StorageDevice(device_data, hostname)
                 self.nodes[hostname].append(device)
+        else:
+            raise ValueError(f"Invalid resource graph format in {input_path}. Expected 'fs' section.")
                 
         # Reanalyze common mounts
         self._analyze_common_mounts()

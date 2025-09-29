@@ -2,7 +2,7 @@
 This module provides classes and methods to launch the NyxLya application.
 NyxLya is ....
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, MpiExecInfo, PsshExecInfo
 from jarvis_cd.shell.process import Mkdir, Rm
 

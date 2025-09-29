@@ -2,7 +2,7 @@
 This module provides classes and methods to launch the DataStagein application.
 DataStagein is ....
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo
 import os
 import pathlib

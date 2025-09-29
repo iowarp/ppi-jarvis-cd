@@ -2,7 +2,7 @@
 Example Application package for testing interceptors
 """
 
-from jarvis_cd.basic.pkg import Application, Interceptor
+from jarvis_cd.core.pkg import Application, Interceptor
 from jarvis_cd.shell import Exec, LocalExecInfo
 import os
 
@@ -40,6 +40,8 @@ class ExampleApp(Application):
         os.makedirs(self.private_dir, exist_ok=True)
         self.output_path = os.path.join(self.private_dir, self.config['output_file'])
 
+        self.log(f'Modified environment variables: {self.mod_env["LD_PRELOAD"]}')
+
     def _init(self):
         """
         Initialize the example application
@@ -51,32 +53,39 @@ class ExampleApp(Application):
         Start the example application
         """
         self.log(f'Starting ExampleApp with message: {self.config["message"]}')
+
+        mod_env = self.mod_env.copy()
+        mod_env.pop('LD_PRELOAD')
+
+
+        self.log(f'Environment variables: {self.env == mod_env}')
+        self.log(f'Modified environment variables: {self.mod_env['LD_PRELOAD']}')
         
-        # Create a simple script to run
-        script_content = f'''#!/bin/bash
-echo "ExampleApp starting..."
-echo "Message: {self.config['message']}"
-echo "Current environment variables:"
-env | grep -E "(LD_PRELOAD|EXAMPLE_)" || echo "No relevant env vars found"
-echo "Creating output file: {self.output_path}"
-echo "{self.config['message']}" > "{self.output_path}"
-echo "ExampleApp finished successfully"
-'''
+#         # Create a simple script to run
+#         script_content = f'''#!/bin/bash
+# echo "ExampleApp starting..."
+# echo "Message: {self.config['message']}"
+# echo "Current environment variables:"
+# env | grep -E "(LD_PRELOAD|EXAMPLE_)" || echo "No relevant env vars found"
+# echo "Creating output file: {self.output_path}"
+# echo "{self.config['message']}" > "{self.output_path}"
+# echo "ExampleApp finished successfully"
+# '''
         
-        script_path = os.path.join(self.private_dir, 'run_example.sh')
-        with open(script_path, 'w') as f:
-            f.write(script_content)
-        os.chmod(script_path, 0o755)
+#         script_path = os.path.join(self.private_dir, 'run_example.sh')
+#         with open(script_path, 'w') as f:
+#             f.write(script_content)
+#         os.chmod(script_path, 0o755)
         
-        # Execute the script
-        cmd = f'bash {script_path}'
-        exec_info = LocalExecInfo(
-            env=self.mod_env,
-            hide_output=self.config['hide_output']
-        )
+#         # Execute the script
+#         cmd = f'bash {script_path}'
+#         exec_info = LocalExecInfo(
+#             env=self.mod_env,
+#             hide_output=self.config['hide_output']
+#         )
         
-        self.exec = Exec(cmd, exec_info).run()
-        self.exit_code = self.exec.exit_code
+#         self.exec = Exec(cmd, exec_info).run()
+#         self.exit_code = self.exec.exit_code
 
     def stop(self):
         """

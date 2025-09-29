@@ -2,7 +2,7 @@
 This module provides classes and methods to launch the Incompact3dPost application.
 Incompact3dPost is ....
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec
 
 

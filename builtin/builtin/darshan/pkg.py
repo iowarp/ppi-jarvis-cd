@@ -2,7 +2,7 @@
 This module provides classes and methods to inject the Darshan interceptor.
 Darshan is ....
 """
-from jarvis_cd.basic.pkg import Interceptor
+from jarvis_cd.core.pkg import Interceptor
 from jarvis_cd.shell import PsshExecInfo
 from jarvis_cd.shell.process import Mkdir
 import os

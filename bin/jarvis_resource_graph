@@ -17,6 +17,36 @@ from jarvis_cd.util.argparse import ArgParse
 from jarvis_cd.shell import LocalExec, LocalExecInfo
 
 
+def _find_accessible_mount_path(mount_point: str) -> Optional[str]:
+    """
+    Find an accessible path for a mount point by trying common user locations.
+    
+    :param mount_point: Base mount point to check
+    :return: Accessible path or None if no access possible
+    """
+    # Get current user
+    current_user = os.getenv('USER', os.getenv('USERNAME', 'unknown'))
+    
+    # List of paths to try in order of preference
+    paths_to_try = [
+        mount_point,  # Try original mount point first
+        f"{mount_point}/{current_user}",  # Try /$USER
+        f"{mount_point}/home/{current_user}",  # Try /home/$USER
+    ]
+    
+    for test_path in paths_to_try:
+        try:
+            test_path_obj = Path(test_path)
+            if test_path_obj.exists() and os.access(test_path, os.W_OK):
+                return test_path
+        except Exception:
+            # Continue to next path if this one fails
+            continue
+    
+    # No accessible path found
+    return None
+
+
 def get_mount_info() -> List[Dict[str, Any]]:
     """Get information about mounted filesystems accessible to current user."""
     mounts = []
@@ -38,20 +68,19 @@ def get_mount_info() -> List[Dict[str, Any]]:
         
         # Skip virtual filesystems and special mounts
         if device.startswith('/dev/') and fs_type not in ['proc', 'sysfs', 'devpts', 'tmpfs', 'devtmpfs']:
-            # Check if current user has write access
-            try:
-                test_path = Path(mount_point)
-                if test_path.exists() and os.access(mount_point, os.W_OK):
-                    mount_info = {
-                        'device': device,
-                        'mount': mount_point,
-                        'fs_type': fs_type,
-                        'options': options.split(','),
-                        'needs_root': False
-                    }
-                    mounts.append(mount_info)
-            except Exception:
-                # If we can't access it, skip it
+            # Check if current user has write access to mount point or common user paths
+            accessible_path = _find_accessible_mount_path(mount_point)
+            if accessible_path:
+                mount_info = {
+                    'device': device,
+                    'mount': accessible_path,
+                    'fs_type': fs_type,
+                    'options': options.split(','),
+                    'needs_root': False
+                }
+                mounts.append(mount_info)
+            else:
+                # Skip inaccessible mount points entirely
                 continue
                 
     return mounts

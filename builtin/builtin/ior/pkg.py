@@ -4,14 +4,14 @@ Ior is a benchmark tool for measuring the performance of I/O systems.
 It is a simple tool that can be used to measure the performance of a file system.
 It is mainly targeted for HPC systems and parallel I/O.
 """
-from jarvis_cd.basic.pkg import SimplePackage
+from jarvis_cd.core.pkg import Application
 from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo, PsshExecInfo, Rm
 from jarvis_cd.util import Hostfile
 import os
 import pathlib
 
 
-class Ior(SimplePackage):
+class Ior(Application):
     """
     This class provides methods to launch the Ior application.
     """
@@ -123,7 +123,7 @@ class Ior(SimplePackage):
         
         self.config['api'] = self.config['api'].upper()
 
-    def _start(self):
+    def start(self):
         """
         Launch an application. E.g., OrangeFS will launch the servers, clients,
         and metadata services on all necessary pkgs.

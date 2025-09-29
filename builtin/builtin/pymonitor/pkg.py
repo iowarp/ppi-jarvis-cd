@@ -2,7 +2,7 @@
 This module provides classes and methods to launch the Ior application.
 Ior is ....
 """
-from jarvis_cd.basic.pkg import Service
+from jarvis_cd.core.pkg import Service
 from jarvis_cd.shell import PsshExecInfo
 from jarvis_cd.shell.process import Mkdir, Kill, Rm
 # TODO: Monitor import needs to be resolved - not available in jarvis_cd yet

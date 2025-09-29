@@ -529,7 +529,7 @@ Ior is a benchmark tool for measuring the performance of I/O systems.
 It is a simple tool that can be used to measure the performance of a file system.
 It is mainly targeted for HPC systems and parallel I/O.
 """
-from jarvis_cd.basic.pkg import Application
+from jarvis_cd.core.pkg import Application
 from jarvis_util import *
 import os
 

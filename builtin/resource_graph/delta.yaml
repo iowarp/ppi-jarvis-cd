@@ -1,52 +1,21 @@
 fs:
-- device: nvme0n1p1
+- avail: 800165027840
+  dev_type: nvme
+  device: nvme0n1p1
+  fs_type: null
   model: MZXL5800HBHQ-000H3
   mount: /tmp
   parent: nvme0n1
-  rota: 0
-  sector_size: 512
-  size: 800165027840
-  tran: pcie
+  shared: false
+  uuid: null
+  needs_root: false
 - avail: 2026619832316723
-  dev_type: null
+  dev_type: hdd
   device: harbor-dt.delta.internal.ncsa.edu:/harbor/ncsa/delta/u
   fs_type: null
   model: null
   mount: /u/${USER}
-  needs_root: false
   parent: null
   shared: true
-  size: 2026619832316723
-  tran: ''
   uuid: null
-net:
-- domain: eth1
-  fabric: 172.28.22.0/23
-  provider: tcp
-  shared: true
-  speed: 0
-- domain: eth1
-  fabric: 172.28.22.0/23
-  provider: tcp;ofi_rxm
-  shared: true
-  speed: 0
-- domain: hsn0
-  fabric: 172.28.80.0/21
-  provider: tcp
-  shared: true
-  speed: 0
-- domain: hsn0
-  fabric: 172.28.80.0/21
-  provider: tcp;ofi_rxm
-  shared: true
-  speed: 0
-- domain: lo
-  fabric: 127.0.0.1/32
-  provider: tcp;ofi_rxm
-  shared: false
-  speed: 0
-- domain: lo
-  fabric: 127.0.0.1/32
-  provider: tcp
-  shared: false
-  speed: 0
+  needs_root: false
