@@ -2626,7 +2626,7 @@ When you run `jarvis ppl print`, you'll see:
 
 ```
 Pipeline: performance_testing
-Directory: /home/user/.jarvis/config/pipelines/performance_testing
+Directory: /home/user/.ppi-jarvis/config/pipelines/performance_testing
 Packages:
   benchmark:
     Type: builtin.ior

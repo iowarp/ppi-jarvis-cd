@@ -29,7 +29,7 @@ class ModuleManager:
         self.jarvis = Jarvis.get_instance()
         
         # Module directory structure
-        self.modules_root = Path.home() / '.jarvis-mods'
+        self.modules_root = Path.home() / '.ppi-jarvis-mods'
         self.packages_dir = self.modules_root / 'packages'
         self.modules_dir = self.modules_root / 'modules'
         

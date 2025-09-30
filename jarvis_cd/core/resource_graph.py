@@ -173,19 +173,19 @@ class ResourceGraphManager:
     def _save_resource_graph(self):
         """Save resource graph to file."""
         # Save to user's home directory for private machine storage
-        output_file = Path.home() / '.jarvis' / 'resource_graph.yaml'
+        output_file = Path.home() / '.ppi-jarvis' / 'resource_graph.yaml'
         output_file.parent.mkdir(exist_ok=True)
-        
+
         self.resource_graph.save_to_file(output_file)
         
     def load_resource_graph(self, file_path: Optional[Path] = None):
         """
         Load resource graph from file.
-        
-        :param file_path: Path to resource graph file (default: ~/.jarvis/resource_graph.yaml)
+
+        :param file_path: Path to resource graph file (default: ~/.ppi-jarvis/resource_graph.yaml)
         """
         if file_path is None:
-            file_path = Path.home() / '.jarvis' / 'resource_graph.yaml'
+            file_path = Path.home() / '.ppi-jarvis' / 'resource_graph.yaml'
             
         if not file_path.exists():
             raise FileNotFoundError(f"Resource graph file not found: {file_path}")
@@ -271,7 +271,7 @@ class ResourceGraphManager:
     def show_resource_graph_path(self):
         """Show the path to the current resource graph file."""
         # Default path where resource graph is stored
-        default_path = Path.home() / '.jarvis' / 'resource_graph.yaml'
+        default_path = Path.home() / '.ppi-jarvis' / 'resource_graph.yaml'
         
         if default_path.exists():
             # Print only the path for shell command substitution

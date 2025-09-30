@@ -63,16 +63,16 @@ jarvis mod setenv zlib ZLIB_VERSION="1.3"
 ```
 
 After this workflow, you'll have:
-- Package installed in `~/.jarvis-mods/packages/zlib/`
-- YAML configuration at `~/.jarvis-mods/modules/zlib.yaml`
-- TCL modulefile at `~/.jarvis-mods/modules/zlib`
+- Package installed in `~/.ppi-jarvis-mods/packages/zlib/`
+- YAML configuration at `~/.ppi-jarvis-mods/modules/zlib.yaml`
+- TCL modulefile at `~/.ppi-jarvis-mods/modules/zlib`
 
 ## Module Directory Structure
 
 The jarvis module system creates a well-organized directory structure:
 
 ```
-~/.jarvis-mods/
+~/.ppi-jarvis-mods/
 ├── packages/                    # Package installation directories
 │   ├── zlib/                   # Example package directory
 │   │   ├── bin/               # Installed binaries
@@ -117,10 +117,10 @@ jarvis mod create
 ```
 
 **Creates:**
-- Package directory: `~/.jarvis-mods/packages/{mod_name}/`
-- Source directory: `~/.jarvis-mods/packages/{mod_name}/src/`
-- YAML configuration: `~/.jarvis-mods/modules/{mod_name}.yaml`
-- TCL modulefile: `~/.jarvis-mods/modules/{mod_name}`
+- Package directory: `~/.ppi-jarvis-mods/packages/{mod_name}/`
+- Source directory: `~/.ppi-jarvis-mods/packages/{mod_name}/src/`
+- YAML configuration: `~/.ppi-jarvis-mods/modules/{mod_name}.yaml`
+- TCL modulefile: `~/.ppi-jarvis-mods/modules/{mod_name}`
 - Sets the new module as current
 
 #### `jarvis mod cd <mod_name>`
@@ -195,7 +195,7 @@ Print the root installation directory for a module.
 
 ```bash
 jarvis mod root zlib
-# /home/user/.jarvis-mods/packages/zlib
+# /home/user/.ppi-jarvis-mods/packages/zlib
 
 # Use in shell commands
 cd $(jarvis mod root zlib)
@@ -207,7 +207,7 @@ Print the source directory for a module.
 
 ```bash
 jarvis mod src zlib
-# /home/user/.jarvis-mods/packages/zlib/src
+# /home/user/.ppi-jarvis-mods/packages/zlib/src
 
 # Use in shell commands
 cd $(jarvis mod src zlib)
@@ -219,7 +219,7 @@ Print the path to the TCL modulefile.
 
 ```bash
 jarvis mod tcl zlib
-# /home/user/.jarvis-mods/modules/zlib
+# /home/user/.ppi-jarvis-mods/modules/zlib
 
 # Use with module command
 module load $(jarvis mod tcl zlib)
@@ -230,7 +230,7 @@ Print the path to the YAML configuration file.
 
 ```bash
 jarvis mod yaml zlib
-# /home/user/.jarvis-mods/modules/zlib.yaml
+# /home/user/.ppi-jarvis-mods/modules/zlib.yaml
 
 # View configuration
 cat $(jarvis mod yaml zlib)
@@ -241,7 +241,7 @@ Print the global modules directory containing all YAML and TCL modulefiles.
 
 ```bash
 jarvis mod dir
-# /home/user/.jarvis-mods/modules
+# /home/user/.ppi-jarvis-mods/modules
 
 # Use to navigate to modules directory
 cd $(jarvis mod dir)
@@ -359,15 +359,15 @@ prepends:                       # Variables to prepend to
   INCLUDE: []
   LDFLAGS: []
   LD_LIBRARY_PATH:
-  - /home/user/.jarvis-mods/packages/zlib/lib
+  - /home/user/.ppi-jarvis-mods/packages/zlib/lib
   LIBRARY_PATH: []
   PATH:
-  - /home/user/.jarvis-mods/packages/zlib/bin
+  - /home/user/.ppi-jarvis-mods/packages/zlib/bin
   PKG_CONFIG_PATH:
-  - /home/user/.jarvis-mods/packages/zlib/lib/pkgconfig
+  - /home/user/.ppi-jarvis-mods/packages/zlib/lib/pkgconfig
   PYTHONPATH: []
 setenvs:                        # Variables to set
-  ZLIB_ROOT: /home/user/.jarvis-mods/packages/zlib
+  ZLIB_ROOT: /home/user/.ppi-jarvis-mods/packages/zlib
   ZLIB_VERSION: "1.3"
 ```
 
@@ -387,10 +387,10 @@ module-whatis 'Name: zlib'
 module-whatis 'Version: 1.3'
 module-whatis 'doc: Compression library'
 module load ppi-jarvis-util
-prepend-path LD_LIBRARY_PATH /home/user/.jarvis-mods/packages/zlib/lib
-prepend-path PATH /home/user/.jarvis-mods/packages/zlib/bin
-prepend-path PKG_CONFIG_PATH /home/user/.jarvis-mods/packages/zlib/lib/pkgconfig
-setenv ZLIB_ROOT /home/user/.jarvis-mods/packages/zlib
+prepend-path LD_LIBRARY_PATH /home/user/.ppi-jarvis-mods/packages/zlib/lib
+prepend-path PATH /home/user/.ppi-jarvis-mods/packages/zlib/bin
+prepend-path PKG_CONFIG_PATH /home/user/.ppi-jarvis-mods/packages/zlib/lib/pkgconfig
+setenv ZLIB_ROOT /home/user/.ppi-jarvis-mods/packages/zlib
 setenv ZLIB_VERSION 1.3
 ```
 
@@ -489,7 +489,7 @@ jarvis mod prepend base-tools PATH="/opt/base/bin"
 jarvis mod create advanced-tools
 
 # Add dependency in YAML (manual edit)
-# Edit ~/.jarvis-mods/modules/advanced-tools.yaml:
+# Edit ~/.ppi-jarvis-mods/modules/advanced-tools.yaml:
 # deps:
 #   base-tools: true
 

@@ -73,7 +73,7 @@ localhost
 3. **Device Analysis**: Determines device type, model, and capacity
 4. **Performance Benchmarking**: Measures I/O performance (optional)
 5. **Common Storage Analysis**: Identifies shared mount points across nodes
-6. **Persistent Storage**: Saves results to `~/.jarvis/resource_graph.yaml`
+6. **Persistent Storage**: Saves results to `~/.ppi-jarvis/resource_graph.yaml`
 
 ## Querying Storage Devices
 
@@ -188,7 +188,7 @@ jarvis rg path
 cd $(dirname $(jarvis rg path))  # Navigate to resource graph directory
 ls -la $(jarvis rg path)         # List resource graph file details
 
-# Resource graph is automatically saved to ~/.jarvis/resource_graph.yaml
+# Resource graph is automatically saved to ~/.ppi-jarvis/resource_graph.yaml
 # after building
 ```
 
@@ -488,7 +488,7 @@ rg.load_from_file(Path('resource_graph.json'))
 jarvis rg load /shared/cluster_storage.yaml
 
 # Default location (automatically loaded)
-# ~/.jarvis/resource_graph.yaml
+# ~/.ppi-jarvis/resource_graph.yaml
 ```
 
 ### Shell Integration

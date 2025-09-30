@@ -10,9 +10,9 @@ Use the argparse class to build the arguments for jarvis. Create a binary called
 Implement in jarvis_cd.core
 
 ## Main Utility Files
-1. The jarvis configuration ~/.jarvis/jarvis_config.yaml
-2. The repos configuration ~/.jarvis/repos.yaml
-3. The resource graph ~/.jarvis/resource_graph.yaml
+1. The jarvis configuration ~/.ppi-jarvis/jarvis_config.yaml
+2. The repos configuration ~/.ppi-jarvis/repos.yaml
+3. The resource graph ~/.ppi-jarvis/resource_graph.yaml
 
 ## Bootstrapping Jarvis
 

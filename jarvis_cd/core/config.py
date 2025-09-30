@@ -8,17 +8,17 @@ from jarvis_cd.util.hostfile import Hostfile
 class JarvisConfig:
     """
     Manages Jarvis configuration files and directories.
-    Handles ~/.jarvis/jarvis_config.yaml, repos.yaml, and resource_graph.yaml
+    Handles ~/.ppi-jarvis/jarvis_config.yaml, repos.yaml, and resource_graph.yaml
     """
-    
+
     def __init__(self, jarvis_root: Optional[str] = None):
         """
         Initialize Jarvis configuration manager.
-        
-        :param jarvis_root: Override default ~/.jarvis directory
+
+        :param jarvis_root: Override default ~/.ppi-jarvis directory
         """
         if jarvis_root is None:
-            self.jarvis_root = Path.home() / '.jarvis'
+            self.jarvis_root = Path.home() / '.ppi-jarvis'
         else:
             self.jarvis_root = Path(jarvis_root)
             
@@ -332,7 +332,7 @@ class JarvisConfig:
             if repo_path.name == 'builtin' and repo_path.exists():
                 return repo_path
         
-        # Fall back to builtin repo installed to ~/.jarvis/builtin
+        # Fall back to builtin repo installed to ~/.ppi-jarvis/builtin
         user_builtin = self.jarvis_root / 'builtin'
         if user_builtin.exists():
             return user_builtin

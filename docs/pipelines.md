@@ -40,7 +40,7 @@ Pipelines are organized in a hierarchical filesystem structure that provides iso
 ### User Configuration Directory Structure
 
 ```
-~/.jarvis/
+~/.ppi-jarvis/
 ├── config/
 │   ├── jarvis.yaml              # Global Jarvis configuration
 │   ├── packages/                # Standalone package configurations
@@ -64,7 +64,7 @@ Pipelines are organized in a hierarchical filesystem structure that provides iso
 Each pipeline gets its own isolated directory:
 
 ```
-~/.jarvis/config/pipelines/my_pipeline/
+~/.ppi-jarvis/config/pipelines/my_pipeline/
 ├── pipeline.yaml              # Main pipeline configuration
 ├── env.yaml                   # Pipeline environment variables
 └── packages/                  # Package instance storage
@@ -325,7 +325,7 @@ pkgs:
 # Create a new empty pipeline
 jarvis ppl create my_pipeline
 
-# Creates directory: ~/.jarvis/config/pipelines/my_pipeline/
+# Creates directory: ~/.ppi-jarvis/config/pipelines/my_pipeline/
 # Sets as current pipeline
 ```
 
@@ -496,7 +496,7 @@ jarvis ppl env build module load gcc/9.3.0 openmpi/4.1.0
 # Copy named environment to current pipeline
 jarvis ppl env copy production_env
 
-# Environment must exist in ~/.jarvis/config/environments/
+# Environment must exist in ~/.ppi-jarvis/config/environments/
 ```
 
 #### Show Pipeline Environment
@@ -554,7 +554,7 @@ jarvis ppl load yaml pipeline.yaml
 ```
 
 **Actions Performed:**
-- Create pipeline directory: `~/.jarvis/config/pipelines/my_pipeline/`
+- Create pipeline directory: `~/.ppi-jarvis/config/pipelines/my_pipeline/`
 - Generate `pipeline.yaml` with pipeline configuration
 - Generate `env.yaml` with environment variables
 - Set as current pipeline in Jarvis configuration
@@ -634,7 +634,7 @@ Environment variables are central to pipeline coordination and package communica
 ### Environment Hierarchy
 
 1. **System Environment**: Current shell environment variables
-2. **Named Environment**: Predefined environment loaded from `~/.jarvis/config/environments/`
+2. **Named Environment**: Predefined environment loaded from `~/.ppi-jarvis/config/environments/`
 3. **Pipeline Environment**: Pipeline-specific environment in `env.yaml`
 4. **Package Environment**: Package-specific environment modifications
 
@@ -1189,7 +1189,7 @@ jarvis ppl status
 ps aux | grep jarvis
 
 # Check package logs
-tail -f ~/.jarvis/config/pipelines/my_pipeline/packages/app/shared/*.log
+tail -f ~/.ppi-jarvis/config/pipelines/my_pipeline/packages/app/shared/*.log
 ```
 
 ### Performance Optimization

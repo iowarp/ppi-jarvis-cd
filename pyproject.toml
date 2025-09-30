@@ -38,7 +38,7 @@ requires = [
 ]
 
 [tool.setuptools]
-packages = ["jarvis_cd", "jarvis_cd.basic", "jarvis_cd.core", "jarvis_cd.util", "builtin", "builtin.builtin"]
+packages = ["jarvis_cd", "jarvis_cd.core", "jarvis_cd.shell", "jarvis_cd.util", "builtin", "builtin.builtin"]
 include-package-data = true
 
 [tool.setuptools.package-data]
