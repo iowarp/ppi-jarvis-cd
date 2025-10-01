@@ -205,16 +205,37 @@ class Echo(Exec):
     """
     Echo text to stdout.
     """
-    
+
     def __init__(self, text: str, exec_info: ExecInfo = None):
         """
         Echo text to stdout.
-        
+
         :param text: Text to echo
         :param exec_info: Execution information
         """
         if exec_info is None:
             exec_info = LocalExecInfo()
-            
+
         echo_cmd = f'echo "{text}"'
         super().__init__(echo_cmd, exec_info)
+
+
+class GdbServer(Exec):
+    """
+    Launch a gdbserver for remote debugging.
+    """
+
+    def __init__(self, cmd: str, port: int, exec_info: ExecInfo = None):
+        """
+        Launch a gdbserver for remote debugging.
+
+        :param cmd: Command to run under gdbserver
+        :param port: Port number for gdbserver to listen on
+        :param exec_info: Execution information
+        """
+        if exec_info is None:
+            exec_info = LocalExecInfo()
+
+        gdbserver_cmd = f"gdbserver :{port} {cmd}"
+        super().__init__(gdbserver_cmd, exec_info)
+        self.port = port

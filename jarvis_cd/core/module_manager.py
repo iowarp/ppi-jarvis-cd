@@ -262,9 +262,55 @@ class ModuleManager:
         current_module = self.jarvis_config.get_current_module()
         if current_module == mod_name:
             self.jarvis_config.set_current_module(None)
-        
+
         print(f"Destroyed module: {mod_name}")
-        
+
+    def clear_module(self, mod_name: Optional[str]):
+        """
+        Clear module directory contents except for the src/ directory.
+        Useful for cleaning up build artifacts while preserving source code.
+
+        :param mod_name: Module name (optional, uses current if None)
+        """
+        if mod_name is None:
+            mod_name = self.jarvis_config.get_current_module()
+            if not mod_name:
+                raise ValueError("No current module set. Use 'jarvis mod cd <module>' or specify module name")
+
+        if not self._module_exists(mod_name):
+            raise ValueError(f"Module '{mod_name}' does not exist")
+
+        # Get package directory
+        package_dir = self.packages_dir / mod_name
+        if not package_dir.exists():
+            logger.warning(f"Package directory does not exist: {package_dir}")
+            return
+
+        # Get src directory
+        src_dir = package_dir / 'src'
+
+        # Remove all contents except src/
+        items_removed = 0
+        for item in package_dir.iterdir():
+            if item.name == 'src':
+                continue  # Skip src directory
+
+            try:
+                if item.is_dir():
+                    shutil.rmtree(item)
+                    logger.info(f"Removed directory: {item.name}/")
+                else:
+                    item.unlink()
+                    logger.info(f"Removed file: {item.name}")
+                items_removed += 1
+            except Exception as e:
+                logger.error(f"Failed to remove {item.name}: {e}")
+
+        if items_removed > 0:
+            logger.success(f"Cleared module '{mod_name}': removed {items_removed} items (preserved src/)")
+        else:
+            logger.info(f"Module '{mod_name}' is already clean (only src/ exists)")
+
     def get_module_src_dir(self, mod_name: Optional[str]) -> str:
         """
         Get the source directory path for a module.
@@ -596,7 +642,88 @@ echo "=== ENV_START ==="
             mod_name = yaml_file.stem
             marker = " *" if mod_name == current_module else "  "
             print(f"{marker} {mod_name}")
-            
+
+    def add_dependency(self, mod_name: Optional[str], dep_name: str):
+        """
+        Add a module dependency.
+
+        :param mod_name: Module name (None for current module)
+        :param dep_name: Dependency module name to add
+        """
+        # Use current module if not specified
+        if mod_name is None:
+            mod_name = self.jarvis_config.get_current_module()
+            if not mod_name:
+                logger.error("No current module set. Please specify a module name or use 'jarvis mod cd <mod_name>' first.")
+                return
+
+        # Check if module exists
+        if not self._module_exists(mod_name):
+            logger.error(f"Module '{mod_name}' does not exist")
+            return
+
+        # Load YAML configuration
+        yaml_file = self.modules_dir / f'{mod_name}.yaml'
+        with open(yaml_file, 'r') as f:
+            config = yaml.safe_load(f)
+
+        # Ensure deps section exists
+        if 'deps' not in config:
+            config['deps'] = {}
+
+        # Add dependency
+        config['deps'][dep_name] = True
+
+        # Save updated configuration
+        with open(yaml_file, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        # Regenerate TCL file
+        self._generate_tcl_file(mod_name)
+
+        logger.success(f"Added dependency '{dep_name}' to module '{mod_name}'")
+
+    def remove_dependency(self, mod_name: Optional[str], dep_name: str):
+        """
+        Remove a module dependency.
+
+        :param mod_name: Module name (None for current module)
+        :param dep_name: Dependency module name to remove
+        """
+        # Use current module if not specified
+        if mod_name is None:
+            mod_name = self.jarvis_config.get_current_module()
+            if not mod_name:
+                logger.error("No current module set. Please specify a module name or use 'jarvis mod cd <mod_name>' first.")
+                return
+
+        # Check if module exists
+        if not self._module_exists(mod_name):
+            logger.error(f"Module '{mod_name}' does not exist")
+            return
+
+        # Load YAML configuration
+        yaml_file = self.modules_dir / f'{mod_name}.yaml'
+        with open(yaml_file, 'r') as f:
+            config = yaml.safe_load(f)
+
+        # Check if dependency exists
+        if 'deps' not in config or dep_name not in config['deps']:
+            logger.warning(f"Dependency '{dep_name}' not found in module '{mod_name}'")
+            return
+
+        # Remove dependency
+        del config['deps'][dep_name]
+
+        # Save updated configuration
+        with open(yaml_file, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        # Regenerate TCL file
+        self._generate_tcl_file(mod_name)
+
+        logger.success(f"Removed dependency '{dep_name}' from module '{mod_name}'")
+
     def _module_exists(self, mod_name: str) -> bool:
         """Check if a module exists."""
         yaml_file = self.modules_dir / f'{mod_name}.yaml'

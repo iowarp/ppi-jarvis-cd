@@ -411,3 +411,10 @@ class Kill(Exec):
         super().__init__(f"pkill -9 {partial_cmd} {cmd}", exec_info)
 ```
 
+### GdbServer
+
+Implement a GdbServer Exec class. It inherits from Exec. 
+
+It will take as input a command and a port number. 
+It will launch a gdbserver with the command and port.
+

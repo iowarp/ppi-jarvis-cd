@@ -161,6 +161,27 @@ jarvis mod destroy
 - YAML configuration and TCL modulefile
 - Clears current module if it was the destroyed one
 
+#### `jarvis mod clear [mod_name]`
+Clear the module package directory, preserving only the `src/` directory. Useful for cleaning build artifacts while keeping source code.
+
+```bash
+# Clear specific module
+jarvis mod clear mypackage
+
+# Clear current module
+jarvis mod cd mypackage
+jarvis mod clear
+```
+
+**Removes:**
+- All directories except `src/` (e.g., `bin/`, `lib/`, `include/`, `build/`)
+- All files in the package root (e.g., `README.md`, build artifacts)
+
+**Preserves:**
+- The `src/` directory and all its contents
+
+**Use case:** After building a package from source, you may want to clean up intermediate build files while keeping the original source code for rebuilding or reference.
+
 ### Environment Variable Management
 
 #### `jarvis mod prepend [mod_name] ENV=VAL1;VAL2;VAL3 ...`
@@ -487,20 +508,50 @@ jarvis mod prepend base-tools PATH="/opt/base/bin"
 
 # Create dependent module
 jarvis mod create advanced-tools
-
-# Add dependency in YAML (manual edit)
-# Edit ~/.ppi-jarvis-mods/modules/advanced-tools.yaml:
-# deps:
-#   base-tools: true
-
-# Add paths for the advanced module
 jarvis mod prepend advanced-tools PATH="/opt/advanced/bin"
+
+# Add dependency using the dep command
+jarvis mod dep add base-tools advanced-tools
+
+# Or add to current module
+jarvis mod cd advanced-tools
+jarvis mod dep add base-tools
 ```
 
 The generated TCL file will include:
 ```tcl
 module load base-tools
 prepend-path PATH /opt/advanced/bin
+```
+
+#### Dependency Management Commands
+
+**Add a dependency:**
+```bash
+jarvis mod dep add <dependency> [module_name]
+```
+Adds `dependency` as a requirement for `module_name`. If `module_name` is omitted, uses the current module.
+
+**Remove a dependency:**
+```bash
+jarvis mod dep remove <dependency> [module_name]
+```
+Removes `dependency` from `module_name`. If `module_name` is omitted, uses the current module.
+
+**Example:**
+```bash
+# Add multiple dependencies to a module
+jarvis mod cd myapp
+jarvis mod dep add zlib
+jarvis mod dep add openssl
+jarvis mod dep add python
+
+# Remove a dependency
+jarvis mod dep remove python
+
+# Work with a specific module
+jarvis mod dep add gcc myapp
+jarvis mod dep remove gcc myapp
 ```
 
 ### Batch Environment Setup

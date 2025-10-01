@@ -588,7 +588,18 @@ class JarvisCLI(ArgParse):
                 'pos': True
             }
         ])
-        
+
+        self.add_cmd('mod clear', msg="Clear module directory except src/")
+        self.add_args([
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+
         self.add_cmd('mod src', msg="Show module source directory")
         self.add_args([
             {
@@ -678,6 +689,45 @@ class JarvisCLI(ArgParse):
                 'msg': 'Output file path (optional)',
                 'type': str,
                 'required': False
+            }
+        ])
+
+        # Module dependency commands
+        self.add_menu('mod dep', msg="Module dependency management")
+
+        self.add_cmd('mod dep add', msg="Add a module dependency")
+        self.add_args([
+            {
+                'name': 'dep_name',
+                'msg': 'Dependency module name',
+                'type': str,
+                'required': True,
+                'pos': True
+            },
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
+            }
+        ])
+
+        self.add_cmd('mod dep remove', msg="Remove a module dependency")
+        self.add_args([
+            {
+                'name': 'dep_name',
+                'msg': 'Dependency module name',
+                'type': str,
+                'required': True,
+                'pos': True
+            },
+            {
+                'name': 'mod_name',
+                'msg': 'Module name (optional, uses current)',
+                'type': str,
+                'required': False,
+                'pos': True
             }
         ])
         
@@ -871,26 +921,29 @@ class JarvisCLI(ArgParse):
         self._ensure_initialized()
         load_type = self.kwargs['load_type']
         pipeline_file = self.kwargs['pipeline_file']
-        
+
         pipeline = Pipeline()
         pipeline.load(load_type, pipeline_file)
+        pipeline.configure_all_packages()
+
         self.current_pipeline = pipeline
         
     def ppl_update(self):
         """Update pipeline from last loaded file"""
         self._ensure_initialized()
         update_type = self.kwargs.get('update_type', 'yaml')
-        
+
         if not self.current_pipeline:
             current_name = self.jarvis_config.get_current_pipeline()
             if current_name:
                 self.current_pipeline = Pipeline(current_name)
             else:
                 raise ValueError("No current pipeline to update")
-        
+
         # For update, we need to reload from the last loaded file
         if hasattr(self.current_pipeline, 'last_loaded_file') and self.current_pipeline.last_loaded_file:
             self.current_pipeline.load(update_type, self.current_pipeline.last_loaded_file)
+            self.current_pipeline.configure_all_packages()
         else:
             raise ValueError("No pipeline file to update from")
         
@@ -1291,7 +1344,7 @@ class JarvisCLI(ArgParse):
         self._ensure_initialized()
         benchmark = not self.kwargs.get('no_benchmark', False)
         duration = self.kwargs.get('duration', 25)
-        self.rg_manager.build_resource_graph(benchmark=benchmark, duration=duration)
+        self.rg_manager.build(benchmark=benchmark, duration=duration)
         
     def build_profile(self):
         """Build environment profile"""
@@ -1303,7 +1356,7 @@ class JarvisCLI(ArgParse):
     def rg_show(self):
         """Show resource graph summary"""
         self._ensure_initialized()
-        self.rg_manager.show_resource_graph()
+        self.rg_manager.show()
         
     def rg_nodes(self):
         """List nodes in resource graph"""
@@ -1326,12 +1379,12 @@ class JarvisCLI(ArgParse):
         """Load resource graph from file"""
         self._ensure_initialized()
         file_path = Path(self.kwargs['file_path'])
-        self.rg_manager.load_resource_graph(file_path)
+        self.rg_manager.load(file_path)
         
     def rg_path(self):
         """Show path to current resource graph file"""
         self._ensure_initialized()
-        self.rg_manager.show_resource_graph_path()
+        self.rg_manager.show_path()
         
     # Module management commands
     def mod_create(self):
@@ -1368,7 +1421,13 @@ class JarvisCLI(ArgParse):
         self._ensure_initialized()
         mod_name = self.kwargs.get('mod_name')
         self.module_manager.destroy_module(mod_name)
-        
+
+    def mod_clear(self):
+        """Clear module directory except src/"""
+        self._ensure_initialized()
+        mod_name = self.kwargs.get('mod_name')
+        self.module_manager.clear_module(mod_name)
+
     def mod_src(self):
         """Show module source directory"""
         self._ensure_initialized()
@@ -1443,7 +1502,21 @@ class JarvisCLI(ArgParse):
         method = self.kwargs.get('m', 'dotenv')
         path = self.kwargs.get('path')
         self.module_manager.build_profile(path, method)
-        
+
+    def mod_dep_add(self):
+        """Add a module dependency"""
+        self._ensure_initialized()
+        dep_name = self.kwargs['dep_name']
+        mod_name = self.kwargs.get('mod_name')
+        self.module_manager.add_dependency(mod_name, dep_name)
+
+    def mod_dep_remove(self):
+        """Remove a module dependency"""
+        self._ensure_initialized()
+        dep_name = self.kwargs['dep_name']
+        mod_name = self.kwargs.get('mod_name')
+        self.module_manager.remove_dependency(mod_name, dep_name)
+
     def ppl_index_load(self):
         """Load a pipeline script from an index"""
         self._ensure_initialized()

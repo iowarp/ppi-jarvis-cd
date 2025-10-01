@@ -92,8 +92,7 @@ def get_device_info(device_path: str) -> Dict[str, Any]:
         'parent': None,
         'model': None,
         'uuid': None,
-        'dev_type': 'unknown',
-        'avail': None
+        'dev_type': 'unknown'
     }
     
     try:
@@ -286,10 +285,10 @@ def collect_storage_resources(benchmark: bool = True) -> Dict[str, Any]:
             'device': device_path,
             'mount': mount_point,
             'fs_type': mount_info['fs_type'],
-            'avail': avail_space,
             'needs_root': mount_info['needs_root'],
             'shared': False,  # Will be determined by resource graph analysis
-            **device_info
+            **device_info,
+            'avail': avail_space  # Set after device_info to avoid being overwritten
         }
         
         # Add performance benchmarks if requested

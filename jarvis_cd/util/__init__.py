@@ -9,16 +9,15 @@ This module provides utility classes including:
 
 from .hostfile import Hostfile
 from .logger import Logger, Color, logger
-from .resource_graph import ResourceGraph, StorageDevice
+from .resource_graph import ResourceGraph
 from .size_type import SizeType, size_to_bytes, human_readable_size
 
 __all__ = [
     'Hostfile',
     'Logger',
-    'Color', 
+    'Color',
     'logger',
     'ResourceGraph',
-    'StorageDevice',
     'SizeType',
     'size_to_bytes',
     'human_readable_size'

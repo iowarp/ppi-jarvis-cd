@@ -229,34 +229,42 @@ class Pkg:
         """
         Ensure package directories are set. Use pkg_id if available, otherwise use class name.
         Gets directory paths from the parent pipeline if available, otherwise uses global directories.
+
+        Directory structure:
+        - config_dir/pipelines/pipeline_name/packages/pkg_id (or config_dir/packages/pkg_id for standalone)
+        - shared_dir/pipeline_name/pkg_id (or shared_dir/pkg_id for standalone)
+        - private_dir/pipeline_name/pkg_id (or private_dir/pkg_id for standalone)
         """
         if not self.config_dir or not self.shared_dir or not self.private_dir:
             try:
                 pkg_id = getattr(self, 'pkg_id', None) or self.__class__.__name__.lower()
-                
+
                 if self.pipeline and hasattr(self.pipeline, 'name'):
-                    # Pipeline package - get directories from pipeline
-                    pipeline_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.pipeline.name)
+                    # Pipeline package - use separate root directories
+                    pipeline_config_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.pipeline.name)
+                    pipeline_shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.pipeline.name)
+                    pipeline_private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(self.pipeline.name)
+
                     if not self.config_dir:
-                        self.config_dir = str(pipeline_dir / 'packages' / pkg_id / 'config')
+                        self.config_dir = str(pipeline_config_dir / 'packages' / pkg_id)
                     if not self.shared_dir:
-                        self.shared_dir = str(pipeline_dir / 'packages' / pkg_id / 'shared')
+                        self.shared_dir = str(pipeline_shared_dir / pkg_id)
                     if not self.private_dir:
-                        self.private_dir = str(pipeline_dir / 'packages' / pkg_id / 'private')
+                        self.private_dir = str(pipeline_private_dir / pkg_id)
                 else:
-                    # Standalone package - use global directories
+                    # Standalone package - use global directories with pkg_id
                     if not self.config_dir:
                         self.config_dir = str(Path(self.jarvis.config_dir) / 'packages' / pkg_id)
                     if not self.shared_dir:
                         self.shared_dir = str(Path(self.jarvis.shared_dir) / pkg_id)
                     if not self.private_dir:
                         self.private_dir = str(Path(self.jarvis.private_dir) / pkg_id)
-                    
+
                 # Create directories if they don't exist
                 for dir_path in [self.config_dir, self.shared_dir, self.private_dir]:
                     if dir_path:
                         Path(dir_path).mkdir(parents=True, exist_ok=True)
-                        
+
             except Exception as e:
                 self.log(f"Warning: Could not set package directories: {e}")
                 # Set fallback directories

@@ -39,28 +39,37 @@ class Pipeline:
     def create(self, pipeline_name: str):
         """
         Create a new pipeline.
-        
+
         :param pipeline_name: Name of the pipeline to create
         """
         self.name = pipeline_name
-        pipeline_dir = self.jarvis.jarvis_config.get_pipeline_dir(pipeline_name)
-        pipeline_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Create all three directories for the pipeline
+        pipeline_config_dir = self.jarvis.jarvis_config.get_pipeline_dir(pipeline_name)
+        pipeline_shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(pipeline_name)
+        pipeline_private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(pipeline_name)
+
+        pipeline_config_dir.mkdir(parents=True, exist_ok=True)
+        pipeline_shared_dir.mkdir(parents=True, exist_ok=True)
+        pipeline_private_dir.mkdir(parents=True, exist_ok=True)
+
         # Initialize pipeline state
         self.packages = []
         self.interceptors = {}
         self.env = {}
         self.created_at = str(Path().cwd())
         self.last_loaded_file = None
-        
+
         # Save pipeline configuration and environment
         self.save()
-        
+
         # Set as current pipeline
         self.jarvis.jarvis_config.set_current_pipeline(pipeline_name)
-        
+
         print(f"Created pipeline: {pipeline_name}")
-        print(f"Pipeline directory: {pipeline_dir}")
+        print(f"Config directory: {pipeline_config_dir}")
+        print(f"Shared directory: {pipeline_shared_dir}")
+        print(f"Private directory: {pipeline_private_dir}")
         
     def load(self, load_type: str = None, pipeline_file: str = None):
         """
@@ -163,26 +172,27 @@ class Pipeline:
     def start(self):
         """Start all packages in the pipeline"""
         logger.pipeline(f"Starting pipeline: {self.name}")
-        
+
         # Start each package with environment propagation
         for pkg_def in self.packages:
             try:
                 logger.package(f"Starting package: {pkg_def['pkg_id']}")
                 pkg_instance = self._load_package_instance(pkg_def, self.env)
-                
+
                 # Apply interceptors to this package before starting
                 self._apply_interceptors_to_package(pkg_instance, pkg_def)
-                
+
                 if hasattr(pkg_instance, 'start'):
                     pkg_instance.start()
                 else:
                     print(f"Package {pkg_def['pkg_id']} has no start method")
-                    
+
                 # Propagate environment changes to next packages
                 self.env.update(pkg_instance.env)
-                    
+
             except Exception as e:
-                print(f"Error starting package {pkg_def['pkg_id']}: {e}")
+                logger.error(f"Error starting package {pkg_def['pkg_id']}: {e}")
+                raise RuntimeError(f"Pipeline startup failed at package '{pkg_def['pkg_id']}': {e}") from e
     
     def stop(self):
         """Stop all packages in the pipeline"""
@@ -248,7 +258,7 @@ class Pipeline:
         """
         Run the pipeline (start all packages, then stop them).
         Optionally load a pipeline file first.
-        
+
         :param load_type: Type of pipeline file to load (e.g., 'yaml')
         :param pipeline_file: Path to pipeline file to load and run
         """
@@ -256,17 +266,41 @@ class Pipeline:
             # Load pipeline file if specified
             if load_type and pipeline_file:
                 self.load(load_type, pipeline_file)
-                
+
             self.start()
             logger.pipeline("Pipeline started successfully. Stopping packages...")
             self.stop()
         except Exception as e:
-            print(f"Error during pipeline run: {e}")
-            print("Attempting to stop packages...")
+            logger.error(f"Error during pipeline run: {e}")
+            logger.info("Attempting to stop packages...")
             try:
                 self.stop()
             except Exception as stop_error:
-                print(f"Error during cleanup: {stop_error}")
+                logger.error(f"Error during cleanup: {stop_error}")
+            # Re-raise the original error after cleanup
+            raise
+
+    def configure_all_packages(self):
+        """
+        Configure all packages in the pipeline.
+        This method loads each package instance and calls its configure() method,
+        then updates the pipeline environment and saves the configuration.
+        """
+        print("Configuring packages...")
+        for pkg_def in self.packages:
+            try:
+                pkg_instance = self._load_package_instance(pkg_def, self.env)
+                if hasattr(pkg_instance, 'configure') and pkg_instance.config:
+                    pkg_instance.configure(**pkg_instance.config)
+                    print(f"Configured package: {pkg_def['pkg_id']}")
+                    # Update the package environment in the pipeline's env
+                    self.env.update(pkg_instance.env)
+            except Exception as e:
+                print(f"Error configuring package {pkg_def['pkg_id']}: {e}")
+
+        # Save pipeline after configuration
+        self.save()
+        print("Pipeline configuration saved")
     
     def append(self, package_spec: str, package_alias: Optional[str] = None):
         """
@@ -688,46 +722,69 @@ class Pipeline:
         try:
             pkg_class = load_class(import_str, repo_path, class_name)
         except Exception as e:
-            raise ValueError(f"Failed to load package '{pkg_type}': Error loading class {class_name} from {import_str}: {e}")
-        
+            import traceback
+            error_details = traceback.format_exc()
+            raise ValueError(
+                f"Failed to load package '{pkg_type}':\n"
+                f"  Repository: {repo_name}\n"
+                f"  Package: {pkg_name}\n"
+                f"  Repo path: {repo_path}\n"
+                f"  Import string: {import_str}\n"
+                f"  Class name: {class_name}\n"
+                f"  Error: {e}\n"
+                f"  Traceback:\n{error_details}"
+            )
+
         if not pkg_class:
             raise ValueError(f"Package class not found: {class_name} in {import_str}")
-            
+
         # Create instance with pipeline context
-        pkg_instance = pkg_class(pipeline=self)
-        
+        try:
+            pkg_instance = pkg_class(pipeline=self)
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            raise ValueError(
+                f"Failed to instantiate package '{pkg_type}':\n"
+                f"  Class: {class_name}\n"
+                f"  Error during __init__: {e}\n"
+                f"  Traceback:\n{error_details}"
+            )
+
         # Set basic attributes
         pkg_instance.pkg_id = pkg_def['pkg_id']
         pkg_instance.global_id = pkg_def['global_id']
-        
+
         # Set configuration
         base_config = pkg_def.get('config', {})
         base_config.setdefault('do_dbg', False)
         base_config.setdefault('dbg_port', 50000)
         pkg_instance.config = base_config
-            
+
         # Ensure package directories are set (will use pipeline context)
-        pkg_instance._ensure_directories()
+        try:
+            pkg_instance._ensure_directories()
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            raise ValueError(
+                f"Failed to ensure directories for package '{pkg_type}':\n"
+                f"  Error: {e}\n"
+                f"  Traceback:\n{error_details}"
+            )
             
         # Set up environment variables - mod_env is exact replica of env plus LD_PRELOAD
         if pipeline_env is None:
             pipeline_env = {}
-            
+
         # env contains everything except LD_PRELOAD
         pkg_instance.env = {k: v for k, v in pipeline_env.items() if k != 'LD_PRELOAD'}
-        
+
         # mod_env is exact replica of env plus LD_PRELOAD (if it exists)
         pkg_instance.mod_env = pkg_instance.env.copy()
         if 'LD_PRELOAD' in pipeline_env:
             pkg_instance.mod_env['LD_PRELOAD'] = pipeline_env['LD_PRELOAD']
-            
-        # Configure the package to set up its environment
-        if hasattr(pkg_instance, 'configure') and pkg_instance.config:
-            try:
-                pkg_instance.configure(**pkg_instance.config)
-            except Exception as e:
-                print(f"Warning: Error configuring package {pkg_instance.pkg_id}: {e}")
-            
+
         return pkg_instance
     
     def _get_package_default_config(self, package_spec: str) -> Dict[str, Any]:

@@ -1037,6 +1037,104 @@ exec_info = MpiExecInfo(
 )
 ```
 
+### Debugging with GdbServer
+
+The `GdbServer` class enables remote debugging by launching applications under gdbserver. This is particularly useful for debugging MPI applications or applications running on remote nodes.
+
+#### GdbServer Usage
+
+```python
+from jarvis_cd.shell.process import GdbServer
+
+# Launch application under gdbserver
+GdbServer(cmd='./my_app --args', port=2345, exec_info=LocalExecInfo()).run()
+
+# With MPI
+GdbServer(
+    cmd='my_mpi_app',
+    port=2345,
+    exec_info=MpiExecInfo(
+        env=self.mod_env,
+        hostfile=self.jarvis.hostfile,
+        nprocs=self.config['nprocs']
+    )
+).run()
+```
+
+#### Conditional Debugging Pattern
+
+Most packages should support optional debugging using a `do_dbg` configuration flag:
+
+```python
+class MyApp(Application):
+    def _configure_menu(self):
+        return [
+            {
+                'name': 'do_dbg',
+                'msg': 'Enable remote debugging with gdbserver',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'dbg_port',
+                'msg': 'GDB server port',
+                'type': int,
+                'default': 2345
+            }
+        ]
+
+    def start(self):
+        # Build command
+        cmd = f'lmp -in {self.input_path}'
+
+        # Execute with or without debugging
+        if self.config['do_dbg']:
+            GdbServer(cmd, self.config['dbg_port'], LocalExecInfo(env=self.mod_env)).run()
+        else:
+            Exec(cmd, LocalExecInfo(env=self.mod_env)).run()
+```
+
+#### Connecting to GdbServer
+
+Once the application is running under gdbserver, connect from your local machine:
+
+```bash
+# Connect to gdbserver
+gdb ./my_app
+(gdb) target remote hostname:2345
+(gdb) continue
+```
+
+#### Multi-Process Debugging
+
+For MPI applications, each process can run on a different port:
+
+```python
+def start(self):
+    cmd = 'my_mpi_app'
+
+    if self.config['do_dbg']:
+        # Calculate unique port per process
+        base_port = self.config['dbg_port']
+
+        # Launch with gdbserver (MPI will spawn multiple instances)
+        GdbServer(
+            cmd,
+            base_port,  # MPI processes will use base_port, base_port+1, etc.
+            MpiExecInfo(
+                env=self.mod_env,
+                hostfile=self.jarvis.hostfile,
+                nprocs=self.config['nprocs']
+            )
+        ).run()
+    else:
+        Exec(cmd, MpiExecInfo(
+            env=self.mod_env,
+            hostfile=self.jarvis.hostfile,
+            nprocs=self.config['nprocs']
+        )).run()
+```
+
 ## Utility Classes
 
 Jarvis-CD provides several utility classes to help with common tasks in package development:

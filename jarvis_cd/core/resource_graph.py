@@ -27,11 +27,20 @@ class ResourceGraphManager:
         """
         self.jarvis = Jarvis.get_instance()
         self.resource_graph = ResourceGraph()
+
+        # Try to load existing resource graph if available
+        default_path = Path.home() / '.ppi-jarvis' / 'resource_graph.yaml'
+        if default_path.exists():
+            try:
+                self.resource_graph.load_from_file(default_path)
+            except Exception:
+                # Silently continue if load fails
+                pass
         
-    def build_resource_graph(self, benchmark: bool = True, duration: int = 25):
+    def build(self, benchmark: bool = True, duration: int = 25):
         """
         Build resource graph by collecting information from all nodes in hostfile.
-        
+
         :param benchmark: Whether to run performance benchmarks
         :param duration: Benchmark duration in seconds
         """
@@ -55,7 +64,7 @@ class ResourceGraphManager:
         self._collect_from_nodes(nodes, benchmark, duration)
         
         # Save resource graph
-        self._save_resource_graph()
+        self._save()
         
         # Display summary
         self.resource_graph.print_summary()
@@ -170,7 +179,7 @@ class ResourceGraphManager:
                 except Exception as e:
                     logger.error(f"Exception processing {hostname}: {e}")
                     
-    def _save_resource_graph(self):
+    def _save(self):
         """Save resource graph to file."""
         # Save to user's home directory for private machine storage
         output_file = Path.home() / '.ppi-jarvis' / 'resource_graph.yaml'
@@ -178,7 +187,7 @@ class ResourceGraphManager:
 
         self.resource_graph.save_to_file(output_file)
         
-    def load_resource_graph(self, file_path: Optional[Path] = None):
+    def load(self, file_path: Optional[Path] = None):
         """
         Load resource graph from file.
 
@@ -193,18 +202,18 @@ class ResourceGraphManager:
         self.resource_graph.load_from_file(file_path)
         logger.success(f"Loaded resource graph from {file_path}")
         
-    def show_resource_graph(self):
-        """Display the current resource graph."""
-        if not self.resource_graph.get_all_nodes():
-            # Try to load the current resource graph
-            try:
-                self.load_resource_graph()
-            except FileNotFoundError:
-                logger.warning("No resource graph found. Run 'jarvis rg build' first.")
-                return
-            
-        self.resource_graph.print_summary()
-        self.resource_graph.print_common_storage()
+    def show(self):
+        """Display the current resource graph YAML file."""
+        # Get default resource graph path
+        default_path = Path.home() / '.ppi-jarvis' / 'resource_graph.yaml'
+
+        if not default_path.exists():
+            logger.warning("No resource graph found. Run 'jarvis rg build' first.")
+            return
+
+        # Read and print raw YAML file contents
+        with open(default_path, 'r') as f:
+            print(f.read())
         
     def show_node_details(self, hostname: str):
         """
@@ -215,7 +224,7 @@ class ResourceGraphManager:
         if not self.resource_graph.get_all_nodes():
             # Try to load the current resource graph
             try:
-                self.load_resource_graph()
+                self.load()
             except FileNotFoundError:
                 logger.warning("No resource graph loaded. Run 'jarvis rg build' first.")
                 return
@@ -227,7 +236,7 @@ class ResourceGraphManager:
         if not self.resource_graph.get_all_nodes():
             # Try to load the current resource graph
             try:
-                self.load_resource_graph()
+                self.load()
             except FileNotFoundError:
                 logger.warning("No nodes in resource graph. Run 'jarvis rg build' first.")
                 return
@@ -268,7 +277,7 @@ class ResourceGraphManager:
         """Get list of common mount points."""
         return list(self.resource_graph.get_common_storage().keys())
         
-    def show_resource_graph_path(self):
+    def show_path(self):
         """Show the path to the current resource graph file."""
         # Default path where resource graph is stored
         default_path = Path.home() / '.ppi-jarvis' / 'resource_graph.yaml'

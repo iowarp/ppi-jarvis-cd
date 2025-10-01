@@ -287,16 +287,39 @@ class JarvisConfig:
         print(f"Set hostfile: {hostfile_path}")
         
     def get_pipeline_dir(self, pipeline_name: str) -> Path:
-        """Get the directory for a specific pipeline"""
-        config_dir = Path(self.config['config_dir'])
-        pipeline_dir = config_dir / 'pipelines' / pipeline_name
-        return pipeline_dir
-        
+        """Get the config directory for a specific pipeline"""
+        jarvis = Jarvis.get_instance()
+        return Path(jarvis.config_dir) / 'pipelines' / pipeline_name
+
+    def get_pipeline_shared_dir(self, pipeline_name: str) -> Path:
+        """Get the shared directory for a specific pipeline"""
+        jarvis = Jarvis.get_instance()
+        return Path(jarvis.shared_dir) / pipeline_name
+
+    def get_pipeline_private_dir(self, pipeline_name: str) -> Path:
+        """Get the private directory for a specific pipeline"""
+        jarvis = Jarvis.get_instance()
+        return Path(jarvis.private_dir) / pipeline_name
+
     def get_current_pipeline_dir(self) -> Optional[Path]:
-        """Get the directory for the current pipeline"""
+        """Get the config directory for the current pipeline"""
         current_pipeline = self.config.get('current_pipeline')
         if current_pipeline:
             return self.get_pipeline_dir(current_pipeline)
+        return None
+
+    def get_current_pipeline_shared_dir(self) -> Optional[Path]:
+        """Get the shared directory for the current pipeline"""
+        current_pipeline = self.config.get('current_pipeline')
+        if current_pipeline:
+            return self.get_pipeline_shared_dir(current_pipeline)
+        return None
+
+    def get_current_pipeline_private_dir(self) -> Optional[Path]:
+        """Get the private directory for the current pipeline"""
+        current_pipeline = self.config.get('current_pipeline')
+        if current_pipeline:
+            return self.get_pipeline_private_dir(current_pipeline)
         return None
         
     def set_current_pipeline(self, pipeline_name: str):
@@ -450,9 +473,15 @@ def load_class(import_str: str, path: str, class_name: str):
     try:
         module = __import__(import_str, fromlist=[class_name])
         cls = getattr(module, class_name, None)
+        if cls is None:
+            raise AttributeError(f"Class '{class_name}' not found in module '{import_str}'")
         return cls
-    except (ImportError, AttributeError):
-        return None
+    except ImportError as e:
+        # Re-raise ImportError with more context instead of silently returning None
+        raise ImportError(f"Failed to import module '{import_str}' from path '{path}': {e}") from e
+    except AttributeError as e:
+        # Re-raise AttributeError with more context instead of silently returning None
+        raise AttributeError(f"Failed to get class '{class_name}' from module '{import_str}': {e}") from e
     finally:
         sys.path.pop(0)
 
