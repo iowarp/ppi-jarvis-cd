@@ -34,7 +34,7 @@ class ExecInfo:
                  sleep_ms=0, sudo=False, sudoenv=True, cwd=None,
                  collect_output=None, pipe_stdout=None, pipe_stderr=None,
                  hide_output=None, exec_async=False, stdin=None,
-                 strict_ssh=False, timeout=None, do_dbg=False, dbg_port=None):
+                 strict_ssh=False, timeout=None, **kwargs):
         """
         Initialize execution information.
 
@@ -55,12 +55,14 @@ class ExecInfo:
         :param pipe_stderr: Pipe STDERR into a file. (path string)
         :param hide_output: Whether to print output to console
         :param exec_async: Whether to execute program asynchronously
-        :param stdin: Any input needed by the program. Only local 
+        :param stdin: Any input needed by the program. Only local
         :param strict_ssh: Strict ssh host key verification
         :param timeout: Timeout subprocess within timeframe
-        :param do_dbg: Enable debugging mode
-        :param dbg_port: Debug port for gdbserver
+        :param kwargs: Additional unknown parameters (silently ignored for backward compatibility)
         """
+        # Silently ignore unknown kwargs for backward compatibility
+        # (e.g., do_dbg, dbg_port from old saved pipelines)
+
         self.exec_type = exec_type
         self.nprocs = nprocs or 1
         self.ppn = ppn
@@ -81,16 +83,17 @@ class ExecInfo:
         self.stdin = stdin
         self.strict_ssh = strict_ssh
         self.timeout = timeout
-        self.do_dbg = do_dbg
-        self.dbg_port = dbg_port or 2000
-        
-        # Basic environment for process execution
+
+        # Basic environment for process execution (without LD_PRELOAD)
+        # This is used for launching MPI itself, not the MPI processes
         self.basic_env = self.env.copy()
+        if 'LD_PRELOAD' in self.basic_env:
+            del self.basic_env['LD_PRELOAD']
         
     def mod(self, **kwargs):
         """
         Create a modified copy of this ExecInfo with updated parameters.
-        
+
         :param kwargs: Parameters to modify
         :return: New ExecInfo instance with modifications
         """
@@ -99,12 +102,12 @@ class ExecInfo:
         for attr in ['exec_type', 'nprocs', 'ppn', 'user', 'pkey', 'port',
                      'hostfile', 'env', 'sleep_ms', 'sudo', 'sudoenv', 'cwd',
                      'collect_output', 'pipe_stdout', 'pipe_stderr', 'hide_output',
-                     'exec_async', 'stdin', 'strict_ssh', 'timeout', 'do_dbg', 'dbg_port']:
+                     'exec_async', 'stdin', 'strict_ssh', 'timeout']:
             current_attrs[attr] = getattr(self, attr)
-            
+
         # Update with new values
         current_attrs.update(kwargs)
-        
+
         return ExecInfo(**current_attrs)
 
 

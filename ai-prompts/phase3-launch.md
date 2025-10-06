@@ -413,7 +413,7 @@ class Kill(Exec):
 
 ### GdbServer
 
-Implement a GdbServer Exec class. It inherits from Exec. 
+Implement a GdbServer Exec class in shell. It inherits from Exec. 
 
 It will take as input a command and a port number. 
 It will launch a gdbserver with the command and port.

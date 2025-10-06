@@ -261,9 +261,7 @@ class Adios2GrayScott(Application):
                  MpiExecInfo(nprocs=self.config['nprocs'],
                              ppn=self.config['ppn'],
                              hostfile=self.jarvis.hostfile,
-                             env=self.mod_env,
-                             do_dbg=self.config['do_dbg'],
-                             dbg_port=self.config['dbg_port']
+                             env=self.mod_env
                              )).run()
         elif self.config['engine'].lower() in ['hermes', 'bp5']:
 

@@ -156,9 +156,7 @@ class Gadget2(Application):
                          ppn=self.config['ppn'],
                          hostfile=self.jarvis.hostfile,
                          env=self.mod_env,
-                         cwd=self.env['GADGET2_PATH'],
-                         do_dbg=self.config['do_dbg'],
-                         dbg_port=self.config['dbg_port'])).run()
+                         cwd=self.env['GADGET2_PATH'])).run()
 
     def stop(self):
         """

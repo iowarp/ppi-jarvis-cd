@@ -115,9 +115,8 @@ Pipeline YAML files define the complete pipeline configuration including package
 name: my_pipeline
 
 # Environment configuration (optional)
-env:
-  GLOBAL_VAR: "value"
-  PATH: "/custom/path:${PATH}"
+# Must be a named environment reference or omitted
+env: my_custom_environment  # References a named environment
 
 # Main packages (required)
 pkgs:
@@ -126,7 +125,7 @@ pkgs:
     # Package configuration parameters
     param1: value1
     param2: value2
-    
+
 # Interceptors (optional)
 interceptors:
   - pkg_type: repo.interceptor_name
@@ -142,11 +141,12 @@ interceptors:
 # Purpose: Measures I/O performance with profiling and tracing
 name: io_benchmark_pipeline
 
-# Pipeline-wide environment variables
-env:
-  BENCHMARK_ROOT: "/tmp/benchmark"
-  MPI_ROOT: "/usr/lib/openmpi"
-  PROFILER_OUTPUT_DIR: "/tmp/profiling"
+# Pipeline-wide environment (named environment reference)
+# The 'benchmark_env' should define:
+#   BENCHMARK_ROOT: "/tmp/benchmark"
+#   MPI_ROOT: "/usr/lib/openmpi"
+#   PROFILER_OUTPUT_DIR: "/tmp/profiling"
+env: benchmark_env
 
 # Interceptors defined at pipeline level
 interceptors:
@@ -201,6 +201,8 @@ pkgs:
 
 ### Environment Types
 
+The `env` field in a pipeline YAML must be either a **named environment reference** (string) or **omitted** (auto-build). Inline environment dictionaries are **not supported**.
+
 #### 1. Named Environment Reference
 ```yaml
 name: my_pipeline
@@ -209,16 +211,16 @@ env: production_environment  # References a named environment
 
 **Auto-Creation**: If the named environment doesn't exist, Jarvis-CD will automatically create it by capturing the current shell environment and save it with the specified name. This allows you to reference environments that will be built on-demand.
 
-#### 2. Inline Environment Dictionary
-```yaml
-name: my_pipeline
-env:
-  CC: "/usr/bin/gcc-9"
-  CFLAGS: "-O3 -march=native"
-  LD_LIBRARY_PATH: "/opt/custom/lib:${LD_LIBRARY_PATH}"
+**Creating Named Environments**: To create a named environment with custom variables:
+```bash
+# Create a named environment from current shell
+jarvis ppl env build my_custom_env
+
+# Or build with additional commands (e.g., module loads)
+jarvis ppl env build my_custom_env module load gcc/9.3.0 openmpi/4.1.0
 ```
 
-#### 3. Auto-built Environment (Default)
+#### 2. Auto-built Environment (Default)
 ```yaml
 name: my_pipeline
 # No env field - automatically captures current environment
@@ -282,16 +284,18 @@ interceptors:
 ### Advanced YAML Features
 
 #### Environment Variable Substitution
+
+Environment variables from named environments can be referenced in package configurations using `${VAR_NAME}` syntax:
+
 ```yaml
-env:
-  WORK_DIR: "/tmp/work"
-  LOG_DIR: "/var/log/myapp"
+# Named environment should define: WORK_DIR, LOG_DIR
+env: my_work_environment
 
 pkgs:
   - pkg_type: builtin.app
     pkg_name: worker
-    work_directory: "${WORK_DIR}"        # Uses WORK_DIR value
-    log_file: "${LOG_DIR}/worker.log"    # Uses LOG_DIR value
+    work_directory: "${WORK_DIR}"        # Uses WORK_DIR from named environment
+    log_file: "${LOG_DIR}/worker.log"    # Uses LOG_DIR from named environment
     temp_space: "${WORK_DIR}/temp"       # Combines variables
 ```
 
@@ -675,23 +679,28 @@ jarvis ppl env build \
 ```
 
 #### Pipeline Environment Configuration
+
+Instead of inline environment dictionaries, use named environments:
+
+```bash
+# First, create a named environment with your custom variables
+# This can be done by setting environment variables in your shell, then:
+export CC="/usr/bin/gcc-9"
+export CXX="/usr/bin/g++-9"
+export LD_LIBRARY_PATH="/opt/intel/lib:${LD_LIBRARY_PATH}"
+export OMP_NUM_THREADS="4"
+export CUDA_VISIBLE_DEVICES="0,1"
+export BENCHMARK_DATA_DIR="/data/benchmarks"
+export RESULTS_OUTPUT_DIR="/tmp/results"
+
+# Build a named environment from your current shell
+jarvis ppl env build my_pipeline_env
+```
+
 ```yaml
-# In pipeline YAML
-env:
-  # Compiler settings
-  CC: "/usr/bin/gcc-9"
-  CXX: "/usr/bin/g++-9"
-  
-  # Library paths
-  LD_LIBRARY_PATH: "/opt/intel/lib:${LD_LIBRARY_PATH}"
-  
-  # Application settings
-  OMP_NUM_THREADS: "4"
-  CUDA_VISIBLE_DEVICES: "0,1"
-  
-  # Custom variables
-  BENCHMARK_DATA_DIR: "/data/benchmarks"
-  RESULTS_OUTPUT_DIR: "/tmp/results"
+# In pipeline YAML, reference the named environment
+name: my_pipeline
+env: my_pipeline_env  # References the environment created above
 ```
 
 #### Package Environment Modification
@@ -774,13 +783,12 @@ jarvis ppl load yaml ./my_custom.yaml
 # File: pipelines/examples/basic_io_benchmark.yaml
 # Pipeline: Basic I/O Performance Test
 # Purpose: Simple I/O benchmark with monitoring
-# Requirements: MPI environment
+# Requirements: MPI environment, named environment 'io_test_env' with TEST_DIR and BLOCK_SIZE
 # Expected Runtime: 5-10 minutes
 
 name: basic_io_benchmark
-env:
-  TEST_DIR: "/tmp/io_test"
-  BLOCK_SIZE: "1G"
+# Named environment should define: TEST_DIR="/tmp/io_test", BLOCK_SIZE="1G"
+env: io_test_env
 
 interceptors:
   - pkg_type: builtin.io_tracer
@@ -927,10 +935,12 @@ pkgs:
 ```
 
 #### 3. Use Environment Variables for Paths
+
+Define paths in a named environment, then reference them in package configurations:
+
 ```yaml
-env:
-  WORK_DIR: "/scratch/benchmark"
-  RESULTS_DIR: "/home/user/results"
+# Named environment should define: WORK_DIR="/scratch/benchmark", RESULTS_DIR="/home/user/results"
+env: benchmark_paths_env
 
 pkgs:
   - pkg_type: builtin.app
@@ -1028,32 +1038,40 @@ pkgs:
 ### Environment Management
 
 #### 1. Minimize Environment Pollution
-```yaml
+
+When creating named environments, be specific and avoid overwriting critical system variables:
+
+```bash
 # ✅ Good - specific and necessary
-env:
-  BENCHMARK_DATA_DIR: "/data/benchmark"
-  RESULTS_OUTPUT_DIR: "/tmp/results"
+export BENCHMARK_DATA_DIR="/data/benchmark"
+export RESULTS_OUTPUT_DIR="/tmp/results"
+jarvis ppl env build clean_benchmark_env
 
 # ❌ Poor - overwrites important system variables
-env:
-  PATH: "/my/custom/path"        # Loses system PATH
-  LD_LIBRARY_PATH: "/my/libs"    # Overwrites system libraries
+export PATH="/my/custom/path"           # Loses system PATH - dangerous!
+export LD_LIBRARY_PATH="/my/libs"       # Overwrites system libraries - dangerous!
+jarvis ppl env build problematic_env    # Don't do this!
 ```
 
 #### 2. Use Environment Composition
-```yaml
-env:
-  # Base directories
-  PROJECT_ROOT: "/opt/myproject"
-  DATA_ROOT: "/data"
-  
-  # Derived paths
-  PROJECT_BIN: "${PROJECT_ROOT}/bin"
-  PROJECT_LIB: "${PROJECT_ROOT}/lib"
-  
-  # Path extensions
-  PATH: "${PROJECT_BIN}:${PATH}"
-  LD_LIBRARY_PATH: "${PROJECT_LIB}:${LD_LIBRARY_PATH}"
+
+When building named environments, compose paths properly:
+
+```bash
+# Define base directories
+export PROJECT_ROOT="/opt/myproject"
+export DATA_ROOT="/data"
+
+# Build derived paths
+export PROJECT_BIN="${PROJECT_ROOT}/bin"
+export PROJECT_LIB="${PROJECT_ROOT}/lib"
+
+# Extend system paths (don't replace them!)
+export PATH="${PROJECT_BIN}:${PATH}"
+export LD_LIBRARY_PATH="${PROJECT_LIB}:${LD_LIBRARY_PATH}"
+
+# Save as named environment
+jarvis ppl env build composed_project_env
 ```
 
 ### Error Handling

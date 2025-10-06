@@ -87,9 +87,7 @@ class Filebench(Application):
         self.log(cmd, color=Color.YELLOW)
         Exec(cmd,
              PsshExecInfo(env=self.mod_env,
-                          hostfile=self.jarvis.hostfile,
-                          do_dbg=self.config['do_dbg'],
-                          dbg_port=self.config['dbg_port'])).run()
+                          hostfile=self.jarvis.hostfile)).run()
 
     def stop(self):
         """

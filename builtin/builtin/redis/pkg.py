@@ -79,8 +79,6 @@ class Redis(Application):
         Exec(cmd,
              PsshExecInfo(env=self.mod_env,
                           hostfile=hostfile,
-                          do_dbg=self.config['do_dbg'],
-                          dbg_port=self.config['dbg_port'],
                           exec_async=True)).run()
         self.log(f'Sleeping for {self.config["sleep"]} seconds', color=Color.YELLOW)
         time.sleep(self.config['sleep'])
@@ -91,14 +89,10 @@ class Redis(Application):
             for host in hostfile.hosts:
                 Exec(f'redis-cli -p {self.config["port"]} -h {host} flushall',
                      LocalExecInfo(env=self.mod_env,
-                                   hostfile=hostfile,
-                                   do_dbg=self.config['do_dbg'],
-                                   dbg_port=self.config['dbg_port'])).run()
+                                   hostfile=hostfile)).run()
                 Exec(f'redis-cli -p {self.config["port"]} -h {host} cluster reset',
                      LocalExecInfo(env=self.mod_env,
-                                   hostfile=hostfile,
-                                   do_dbg=self.config['do_dbg'],
-                                   dbg_port=self.config['dbg_port'])).run()
+                                   hostfile=hostfile)).run()
 
             self.log('Creating the cluster', color=Color.YELLOW)
             cmd = [
@@ -111,9 +105,7 @@ class Redis(Application):
             print(cmd)
             Exec(cmd,
                  LocalExecInfo(env=self.mod_env,
-                               hostfile=hostfile,
-                               do_dbg=self.config['do_dbg'],
-                               dbg_port=self.config['dbg_port'])).run()
+                               hostfile=hostfile)).run()
             self.log(f'Sleeping for {self.config["sleep"]} seconds', color=Color.YELLOW)
             time.sleep(self.config['sleep'])
 

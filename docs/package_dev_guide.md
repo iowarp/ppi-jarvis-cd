@@ -582,36 +582,72 @@ def _configure_menu(self):
 ### Lifecycle Methods
 
 #### `_configure(self, **kwargs)`
-**Purpose**: Handle package configuration  
-**Called**: When package is configured via CLI or programmatically  
-**Use**: Set up environment variables and generate application-specific configuration files
+**Purpose**: Handle package configuration
+**Called**: When package is configured via CLI or programmatically
+**Use**: Set up environment variables, generate application-specific configuration files, and create directories
 **Note**: Override `_configure()`, not `configure()`. The public `configure()` method automatically calls `self.update_config()` before calling `_configure()`.
+
+**IMPORTANT**: `_configure()` is for ALL setup work, including:
+- Setting environment variables
+- Generating configuration files
+- Creating directories (local and remote)
+- Validating configuration parameters
+- Preparing resources needed for execution
+
+The `start()` method should ONLY execute programs, not perform any setup.
 
 ```python
 def _configure(self, **kwargs):
     """Configure the package"""
     # No need to call self.update_config() - it's done automatically
-    
+
     # Set environment variables
     if self.config['custom_path']:
         self.setenv('MY_APP_PATH', self.config['custom_path'])
         self.prepend_env('PATH', self.config['custom_path'] + '/bin')
-    
+
+    # Create directories on all nodes (setup, not execution)
+    from jarvis_cd.shell.process import Mkdir
+    output_dir = os.path.expandvars(self.config['output_dir'])
+    parent_dir = str(pathlib.Path(output_dir).parent)
+    Mkdir(parent_dir,
+          PsshExecInfo(env=self.mod_env,
+                       hostfile=self.jarvis.hostfile)).run()
+
     # Generate application-specific configuration files
     # This is where you create config files, validate parameters, etc.
 ```
 
 #### `start(self)`
-**Purpose**: Start the package (application, service, or interceptor)  
+**Purpose**: Start the package (application, service, or interceptor)
 **Called**: During `jarvis ppl run` and `jarvis ppl start`
+
+**IMPORTANT**: `start()` should ONLY execute programs. All setup work (environment variables, directory creation, configuration files) must be done in `_configure()`.
+
+**DO in start():**
+- Execute applications
+- Run MPI programs
+- Start services
+- Launch daemons
+
+**DON'T in start():**
+- Create directories (do this in `_configure()`)
+- Set environment variables (do this in `_configure()`)
+- Generate configuration files (do this in `_configure()`)
+- Perform validation (do this in `_configure()`)
 
 ```python
 def start(self):
-    """Start the package"""
-    # Use self.mod_env for environment variables
-    # Use self.jarvis.hostfile for MPI execution
+    """Start the package - ONLY execution, no setup"""
+    # ✅ Good - Just execute the program
     cmd = ['my_application', '--config', self.config['config_file']]
     Exec(' '.join(cmd), LocalExecInfo(env=self.mod_env)).run()
+
+    # ❌ Bad - Don't create directories here
+    # Mkdir('/output/dir', LocalExecInfo()).run()  # Do this in _configure()!
+
+    # ❌ Bad - Don't set environment variables here
+    # self.setenv('VAR', 'value')  # Do this in _configure()!
 ```
 
 #### `stop(self)`
@@ -2565,22 +2601,50 @@ Rm('/tmp/files*', LocalExecInfo())     # Files not removed!
 
 This is the most common mistake in package development and will cause your package to appear to work but actually do nothing.
 
-### 2. Use Environment Variables Correctly
+### 2. Separate Configuration from Execution
+
+**CRITICAL**: Maintain strict separation between setup (`_configure()`) and execution (`start()`).
 
 ```python
-# ✅ Good - Use in _configure()
+# ✅ Good - All setup in _configure()
 def _configure(self, **kwargs):
     # Configuration automatically updated
+
+    # Set environment variables
     self.setenv('MY_APP_HOME', self.config['install_path'])
 
-# ✅ Good - Use mod_env in execution
-def start(self):
-    Exec('command', LocalExecInfo(env=self.mod_env)).run()
+    # Create directories on all nodes
+    output_dir = os.path.expandvars(self.config['output_dir'])
+    parent_dir = str(pathlib.Path(output_dir).parent)
+    Mkdir(parent_dir,
+          PsshExecInfo(env=self.mod_env,
+                       hostfile=self.jarvis.hostfile)).run()
 
-# ❌ Bad - Don't set environment in start()
+    # Generate configuration files
+    config_file = f'{self.shared_dir}/app.conf'
+    with open(config_file, 'w') as f:
+        f.write(f"port={self.config['port']}\n")
+
+# ✅ Good - Only execution in start()
 def start(self):
-    self.setenv('LATE_VAR', 'value')  # Too late!
+    cmd = ['my_app', '--config', f'{self.shared_dir}/app.conf']
+    Exec(' '.join(cmd), LocalExecInfo(env=self.mod_env)).run()
+
+# ❌ Bad - Don't mix setup with execution
+def start(self):
+    # Don't do this!
+    self.setenv('LATE_VAR', 'value')  # Too late - do in _configure()!
+    Mkdir('/output/dir', LocalExecInfo()).run()  # Wrong place!
+
+    cmd = ['my_app']
+    Exec(' '.join(cmd), LocalExecInfo(env=self.mod_env)).run()
 ```
+
+**Why this matters:**
+- `_configure()` is called once during pipeline configuration
+- `start()` may be called multiple times (e.g., after `stop()`)
+- Environment variables set in `start()` won't propagate to other packages
+- Directory creation in `start()` is wasteful and error-prone
 
 ### 2. Handle File Paths Properly
 

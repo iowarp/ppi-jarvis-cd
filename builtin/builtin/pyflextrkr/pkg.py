@@ -349,8 +349,6 @@ class Pyflextrkr(Application):
         
         Exec(self.config['run_cmd'],
              LocalExecInfo(env=self.mod_env,
-                           do_dbg=self.config['do_dbg'],
-                           dbg_port=self.config['dbg_port'],
                            pipe_stdout=self.config['stdout'],
                            pipe_stderr=self.config['stderr'],
                            )).run()

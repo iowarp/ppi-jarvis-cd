@@ -73,6 +73,12 @@ class JarvisCLI(ArgParse):
                 'default': '~/.ppi-jarvis/shared',
                 'class': 'dirs',
                 'rank': 2
+            },
+            {
+                'name': 'force',
+                'msg': 'Force override of existing repos and resource_graph',
+                'type': bool,
+                'default': False,
             }
         ])
         
@@ -409,7 +415,18 @@ class JarvisCLI(ArgParse):
                 'default': False
             }
         ])
-        
+
+        self.add_cmd('pkg help', msg="Show package configuration help")
+        self.add_args([
+            {
+                'name': 'package_spec',
+                'msg': 'Package to show help for (pkg or repo.pkg)',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+
         # Environment commands
         self.add_menu('env', msg="Named environment management")
         
@@ -793,10 +810,11 @@ class JarvisCLI(ArgParse):
         config_dir = os.path.expanduser(self.kwargs['config_dir'])
         private_dir = os.path.expanduser(self.kwargs['private_dir'])
         shared_dir = os.path.expanduser(self.kwargs['shared_dir'])
-        
+        force = self.kwargs.get('force', False)
+
         jarvis_config = JarvisConfig()
-        jarvis_config.initialize(config_dir, private_dir, shared_dir)
-        
+        jarvis_config.initialize(config_dir, private_dir, shared_dir, force=force)
+
         # Initialize Jarvis singleton
         Jarvis.initialize(jarvis_config, config_dir, private_dir, shared_dir)
         print(f"Jarvis initialized successfully!")
@@ -1155,21 +1173,13 @@ class JarvisCLI(ArgParse):
         """Configure package"""
         self._ensure_initialized()
         package_spec = self.kwargs['package_spec']
-        
-        # Extract additional configuration arguments from remainder
-        config_args = {}
-        for arg in self.remainder:
-            if '=' in arg:
-                key, value = arg.split('=', 1)
-                key = key.lstrip('-')  # Remove leading dashes
-                config_args[key] = value
-        
+
         # Parse package specification
         if '.' in package_spec:
             # pipeline.pkg format
             pipeline_name, pkg_id = package_spec.split('.', 1)
             pipeline = Pipeline(pipeline_name)
-            pipeline.configure_package(pkg_id, config_args)
+            pipeline.configure_package(pkg_id, self.remainder)
         else:
             # Just package name - assume current pipeline
             if not self.current_pipeline:
@@ -1178,8 +1188,8 @@ class JarvisCLI(ArgParse):
                     self.current_pipeline = Pipeline(current_name)
                 else:
                     raise ValueError("No current pipeline. Specify as pipeline.pkg or create a pipeline first.")
-            
-            self.current_pipeline.configure_package(package_spec, config_args)
+
+            self.current_pipeline.configure_package(package_spec, self.remainder)
         
     def pkg_readme(self):
         """Show package README"""
@@ -1293,7 +1303,20 @@ class JarvisCLI(ArgParse):
                 from jarvis_cd.core.pkg import Pkg
                 pkg_instance = Pkg.load_standalone(package_spec)
                 pkg_instance.show_paths(path_flags)
-        
+
+    def pkg_help(self):
+        """Show package configuration help"""
+        self._ensure_initialized()
+        package_spec = self.kwargs['package_spec']
+
+        # Load the package standalone (repo.pkg format like builtin.ior)
+        from jarvis_cd.core.pkg import Pkg
+        pkg_instance = Pkg.load_standalone(package_spec)
+
+        # Get the argparse instance and print help
+        argparse = pkg_instance.get_argparse()
+        argparse.print_help()
+
     def ppl_env_build(self):
         """Build environment for current pipeline"""
         self._ensure_initialized()

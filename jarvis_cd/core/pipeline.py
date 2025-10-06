@@ -282,25 +282,48 @@ class Pipeline:
 
     def configure_all_packages(self):
         """
-        Configure all packages in the pipeline.
-        This method loads each package instance and calls its configure() method,
+        Configure all packages and interceptors in the pipeline.
+        This method loads each package/interceptor instance and calls its configure() method,
         then updates the pipeline environment and saves the configuration.
         """
-        print("Configuring packages...")
+        print("Configuring interceptors and packages...")
+
+        # Configure interceptors
+        for interceptor_id, interceptor_def in self.interceptors.items():
+            self._configure_package_instance(interceptor_def, "interceptor")
+
+        # Configure packages
         for pkg_def in self.packages:
-            try:
-                pkg_instance = self._load_package_instance(pkg_def, self.env)
-                if hasattr(pkg_instance, 'configure') and pkg_instance.config:
-                    pkg_instance.configure(**pkg_instance.config)
-                    print(f"Configured package: {pkg_def['pkg_id']}")
-                    # Update the package environment in the pipeline's env
-                    self.env.update(pkg_instance.env)
-            except Exception as e:
-                print(f"Error configuring package {pkg_def['pkg_id']}: {e}")
+            self._configure_package_instance(pkg_def, "package")
 
         # Save pipeline after configuration
         self.save()
         print("Pipeline configuration saved")
+
+    def _configure_package_instance(self, pkg_def: Dict[str, Any], pkg_type_label: str):
+        """
+        Configure a single package or interceptor instance.
+
+        :param pkg_def: Package definition dictionary
+        :param pkg_type_label: Label for logging ("package" or "interceptor")
+        """
+        try:
+            pkg_instance = self._load_package_instance(pkg_def, self.env)
+            if hasattr(pkg_instance, 'configure'):
+                # Configure the package with its config
+                updated_config = pkg_instance.configure(**pkg_instance.config)
+                print(f"Configured {pkg_type_label}: {pkg_def['pkg_id']}")
+
+                # Update pkg_def with the final config from the package
+                if updated_config:
+                    pkg_def['config'] = updated_config
+                else:
+                    pkg_def['config'] = pkg_instance.config.copy()
+
+                # Update the package environment in the pipeline's env
+                self.env.update(pkg_instance.env)
+        except Exception as e:
+            print(f"Error configuring {pkg_type_label} {pkg_def['pkg_id']}: {e}")
     
     def append(self, package_spec: str, package_alias: Optional[str] = None):
         """
@@ -404,12 +427,12 @@ class Pipeline:
             except Exception as e:
                 print(f"Error cleaning package {pkg_def['pkg_id']}: {e}")
     
-    def configure_package(self, pkg_id: str, config_args: Dict[str, Any]):
+    def configure_package(self, pkg_id: str, config_args: List[str]):
         """
         Configure a specific package in the pipeline.
-        
+
         :param pkg_id: Package ID to configure
-        :param config_args: Configuration arguments (will be type-converted based on package menu)
+        :param config_args: Configuration arguments as command-line args (e.g., ['--nprocs', '4', 'block=32m'])
         """
         # Find package in pipeline
         pkg_def = None
@@ -417,84 +440,39 @@ class Pipeline:
             if pkg['pkg_id'] == pkg_id:
                 pkg_def = pkg
                 break
-                
+
         if not pkg_def:
             raise ValueError(f"Package not found: {pkg_id}")
-            
+
         # Load package instance
         pkg_instance = self._load_package_instance(pkg_def, self.env)
-        
+
         try:
-            # Get package configuration menu for type conversion
-            converted_args = {}
-            if hasattr(pkg_instance, 'configure_menu') and config_args:
-                config_menu = pkg_instance.configure_menu()
-                
-                # Create a type conversion map from the menu
-                type_map = {}
-                for menu_item in config_menu:
-                    param_name = menu_item.get('name')
-                    param_type = menu_item.get('type', str)
-                    if param_name:
-                        type_map[param_name] = param_type
-                
-                # Convert each argument to its proper type
-                for key, value in config_args.items():
-                    if key in type_map:
-                        target_type = type_map[key]
-                        try:
-                            if target_type == bool:
-                                if isinstance(value, str):
-                                    converted_args[key] = value.lower() in ('true', '1', 'yes', 'on')
-                                else:
-                                    converted_args[key] = bool(value)
-                            elif target_type == int:
-                                converted_args[key] = int(value)
-                            elif target_type == float:
-                                converted_args[key] = float(value)
-                            elif target_type == str:
-                                converted_args[key] = str(value)
-                            elif target_type == list:
-                                if isinstance(value, list):
-                                    converted_args[key] = value
-                                else:
-                                    converted_args[key] = [value]
-                            else:
-                                converted_args[key] = value
-                        except (ValueError, TypeError) as e:
-                            print(f"Error converting parameter '{key}' to {target_type.__name__}: {e}")
-                            converted_args[key] = value  # Keep original value on error
-                    else:
-                        # Parameter not in menu, keep as-is
-                        converted_args[key] = value
-            else:
-                # No menu available or no args, use args as-is
-                converted_args = config_args
-            
+            # Use PkgArgParse to parse and convert arguments
+            argparse = pkg_instance.get_argparse()
+            # Parse arguments - prepend 'configure' command
+            parsed_args = argparse.parse(['configure'] + config_args)
+            converted_args = argparse.kwargs
+
             # Update package configuration with converted values
             pkg_def['config'].update(converted_args)
-            
+
             # Configure the package instance
             if hasattr(pkg_instance, 'configure'):
                 pkg_instance.configure(**converted_args)
                 print(f"Configured package {pkg_id} successfully")
             else:
                 print(f"Package {pkg_id} has no configure method")
-                
+
             # Save updated pipeline
             self.save()
             print(f"Saved configuration for {pkg_id}")
-            
+
         except Exception as e:
             print(f"Error configuring package {pkg_id}: {e}")
             # Show available configuration options
-            if hasattr(pkg_instance, 'configure_menu'):
-                config_menu = pkg_instance.configure_menu()
-                if config_menu:
-                    print(f"Available options for {pkg_id}:")
-                    for option in config_menu:
-                        aliases = f" (aliases: {', '.join(option.get('aliases', []))})" if option.get('aliases') else ""
-                        print(f"  --{option['name']}: {option.get('msg', 'No description')}{aliases}")
+            argparse = pkg_instance.get_argparse()
+            argparse.print_help('configure')
     
     def show_package_readme(self, pkg_id: str):
         """
@@ -584,9 +562,10 @@ class Pipeline:
             
         self.name = pipeline_def.get('name', pipeline_file.stem)
         
-        # Handle environment - can be a string (named env), dict (inline env), or missing (auto-build)
+        # Handle environment - can be a string (named env) or missing (auto-build)
+        # Inline dictionaries are NOT supported
         env_field = pipeline_def.get('env')
-        
+
         if env_field is None:
             # No env field defined - automatically build environment
             try:
@@ -619,8 +598,21 @@ class Pipeline:
                     print(f"Warning: Could not build named environment '{env_name}': {build_error}")
                     self.env = {}
         elif isinstance(env_field, dict):
-            # Inline environment variables
-            self.env = env_field
+            # Inline environment dictionaries are not allowed
+            raise ValueError(
+                "Inline environment dictionaries are not supported in pipeline YAML files.\n"
+                "The 'env' field must be either:\n"
+                "  1. A string referencing a named environment (e.g., env: production_environment)\n"
+                "  2. Omitted to auto-build from the current shell environment\n\n"
+                "To use custom environment variables:\n"
+                "  1. Create a named environment: jarvis ppl env build <env_name> <commands...>\n"
+                "  2. Reference it in your pipeline: env: <env_name>"
+            )
+        else:
+            raise ValueError(
+                f"Invalid 'env' field type: {type(env_field).__name__}. "
+                "The 'env' field must be either a string (named environment) or omitted (auto-build)."
+            )
         
         # Initialize other attributes
         self.created_at = str(Path().cwd())
@@ -630,36 +622,15 @@ class Pipeline:
         
         # Process interceptors
         interceptors_list = pipeline_def.get('interceptors', [])
-        
         for interceptor_def in interceptors_list:
-            interceptor_type = interceptor_def['pkg_type']
-            interceptor_id = interceptor_def.get('pkg_name', interceptor_type.split('.')[-1])
-            
-            interceptor_entry = {
-                'pkg_type': interceptor_type,
-                'pkg_id': interceptor_id,
-                'pkg_name': interceptor_type.split('.')[-1],
-                'global_id': f"{self.name}.{interceptor_id}",
-                'config': {k: v for k, v in interceptor_def.items() 
-                          if k not in ['pkg_type', 'pkg_name']}
-            }
-            
+            interceptor_id = interceptor_def.get('pkg_name', interceptor_def['pkg_type'].split('.')[-1])
+            interceptor_entry = self._process_package_definition(interceptor_def, interceptor_id)
             self.interceptors[interceptor_id] = interceptor_entry
-        
+
         # Process packages
         for pkg_def in pipeline_def.get('pkgs', []):
-            pkg_type = pkg_def['pkg_type']
-            pkg_id = pkg_def.get('pkg_name', pkg_type)
-            
-            package_entry = {
-                'pkg_type': pkg_type,
-                'pkg_id': pkg_id,
-                'pkg_name': pkg_type.split('.')[-1],
-                'global_id': f"{self.name}.{pkg_id}",
-                'config': {k: v for k, v in pkg_def.items() 
-                          if k not in ['pkg_type', 'pkg_name']}
-            }
-            
+            pkg_id = pkg_def.get('pkg_name', pkg_def['pkg_type'])
+            package_entry = self._process_package_definition(pkg_def, pkg_id)
             self.packages.append(package_entry)
         
         # Validate that interceptor and package IDs are unique
@@ -787,8 +758,40 @@ class Pipeline:
 
         return pkg_instance
     
+    def _process_package_definition(self, pkg_def: Dict[str, Any], pkg_id: str) -> Dict[str, Any]:
+        """
+        Process a package definition from YAML, merging YAML config with defaults.
+
+        :param pkg_def: Package definition from YAML
+        :param pkg_id: Package ID to use
+        :return: Complete package entry with merged configuration
+        """
+        pkg_type = pkg_def['pkg_type']
+
+        # Get default configuration from package
+        default_config = self._get_package_default_config(pkg_type)
+
+        # Extract config from YAML
+        yaml_config = {k: v for k, v in pkg_def.items()
+                      if k not in ['pkg_type', 'pkg_name']}
+
+        # Merge YAML config on top of defaults
+        merged_config = default_config.copy()
+        merged_config.update(yaml_config)
+
+        return {
+            'pkg_type': pkg_type,
+            'pkg_id': pkg_id,
+            'pkg_name': pkg_type.split('.')[-1],
+            'global_id': f"{self.name}.{pkg_id}",
+            'config': merged_config
+        }
+
     def _get_package_default_config(self, package_spec: str) -> Dict[str, Any]:
-        """Get default configuration values for a package"""
+        """
+        Get default configuration values for a package by parsing with PkgArgParse.
+        Equivalent to calling 'configure' with no parameters.
+        """
         try:
             # Create a temporary package definition to load the package
             temp_pkg_def = {
@@ -798,34 +801,21 @@ class Pipeline:
                 'global_id': 'temp.temp',
                 'config': {}
             }
-            
+
             # Load package instance
             pkg_instance = self._load_package_instance(temp_pkg_def)
-            
-            # Get configuration menu
-            if hasattr(pkg_instance, 'configure_menu'):
-                config_menu = pkg_instance.configure_menu()
-                
-                # Extract default values
-                default_config = {}
-                for menu_item in config_menu:
-                    name = menu_item.get('name')
-                    default_value = menu_item.get('default')
-                    
-                    # Only include items that have default values
-                    if name and default_value is not None:
-                        default_config[name] = default_value
-                
-                # Add common parameters that packages might expect
-                default_config.setdefault('do_dbg', False)
-                default_config.setdefault('dbg_port', 50000)
-                        
-                return default_config
-                
+
+            # Use PkgArgParse to get defaults by parsing 'configure' with no args
+            argparse = pkg_instance.get_argparse()
+            argparse.parse(['configure'])
+            default_config = argparse.kwargs
+
+            return default_config
+
         except Exception as e:
             # Package loading failure should be fatal - cannot add package to pipeline
             raise ValueError(f"Failed to load package '{package_spec}': {e}")
-            
+
         return {}
     
     def _validate_unique_ids(self):

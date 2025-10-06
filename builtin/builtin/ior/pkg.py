@@ -5,7 +5,8 @@ It is a simple tool that can be used to measure the performance of a file system
 It is mainly targeted for HPC systems and parallel I/O.
 """
 from jarvis_cd.core.pkg import Application
-from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo, PsshExecInfo, Rm
+from jarvis_cd.shell import Exec, LocalExecInfo, MpiExecInfo, PsshExecInfo, Rm, Mkdir
+from jarvis_cd.shell.process import GdbServer
 from jarvis_cd.util import Hostfile
 import os
 import pathlib
@@ -105,8 +106,14 @@ class Ior(Application):
                 'type': str,
                 'default': None,
             },
+            {
+                'name': 'direct',
+                'msg': 'Use direct I/O (O_DIRECT) for POSIX API, bypassing I/O buffers',
+                'type': bool,
+                'default': False,
+            }
         ]
-        
+
         # Combine base menu (interceptors) with IOR-specific menu
         return base_menu + ior_menu
 
@@ -120,8 +127,15 @@ class Ior(Application):
         """
         # Call parent configuration (handles interceptors)
         super()._configure(**kwargs)
-        
+
         self.config['api'] = self.config['api'].upper()
+
+        # Create parent directory of output file on all nodes
+        out = os.path.expandvars(self.config['out'])
+        parent_dir = str(pathlib.Path(out).parent)
+        Mkdir(parent_dir,
+              PsshExecInfo(env=self.mod_env,
+                           hostfile=self.jarvis.hostfile)).run()
 
     def start(self):
         """
@@ -138,7 +152,6 @@ class Ior(Application):
             f'-a {self.config["api"]}',
             f'-o {self.config["out"]}',
         ]
-        out = os.path.expandvars(self.config['out'])
         if self.config['write']:
             cmd.append('-w')
         if self.config['read']:
@@ -147,21 +160,35 @@ class Ior(Application):
             cmd.append('-F')
         if self.config['reps'] > 1:
             cmd.append(f'-i {self.config["reps"]}')
-        if '.' in os.path.basename(out):
-            os.makedirs(str(pathlib.Path(out).parent),
-                        exist_ok=True)
-        else:
-            os.makedirs(out, exist_ok=True)
-        # pipe_stdout=self.config['log']
-        Exec('which mpiexec',
-             LocalExecInfo(env=self.mod_env)).run() 
-        Exec(' '.join(cmd),
+        if self.config['direct']:
+            cmd.append('-O useO_DIRECT=1')
+            
+        # Build IOR command
+        ior_cmd = ' '.join(cmd)
+
+        # Use GdbServer to create gdbserver command if debugging is enabled
+        gdb_server = GdbServer(ior_cmd, self.config.get('dbg_port', 4000))
+        gdbserver_cmd = gdb_server.get_cmd()
+
+        # Use multi-command format with gdbserver
+        cmd_list = [
+            {
+                'cmd': gdbserver_cmd,
+                'nprocs': 1 if self.config.get('do_dbg', False) else 0,
+                'disable_preload': True
+            },
+            {
+                'cmd': ior_cmd,
+                'nprocs': None  # Will be calculated from remainder
+            }
+        ]
+        print(cmd_list)
+
+        Exec(cmd_list,
              MpiExecInfo(env=self.mod_env,
                          hostfile=self.jarvis.hostfile,
                          nprocs=self.config['nprocs'],
-                         ppn=self.config['ppn'],
-                         do_dbg=self.config['do_dbg'],
-                         dbg_port=self.config['dbg_port'])).run()
+                         ppn=self.config['ppn'])).run()
 
     def stop(self):
         """

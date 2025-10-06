@@ -175,13 +175,6 @@ class Pkg:
                 'default': 1234,
             },
             {
-                'name': 'log_level',
-                'msg': 'Logging level',
-                'type': str,
-                'choices': ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-                'default': 'INFO',
-            },
-            {
                 'name': 'timeout',
                 'msg': 'Operation timeout in seconds',
                 'type': int,
@@ -203,7 +196,18 @@ class Pkg:
         
         # Combine package-specific and common menus
         return package_menu + common_menu
-        
+
+    def get_argparse(self):
+        """
+        Get PkgArgParse instance for this package.
+        Used to display configuration help.
+
+        :return: PkgArgParse instance
+        """
+        from jarvis_cd.util import PkgArgParse
+        pkg_name = getattr(self, 'pkg_id', None) or self.__class__.__name__
+        return PkgArgParse(pkg_name, self.configure_menu())
+
     def configure(self, **kwargs):
         """
         Public configuration method that calls internal _configure.

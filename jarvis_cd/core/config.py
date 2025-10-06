@@ -31,22 +31,25 @@ class JarvisConfig:
         self._resource_graph = None
         self._hostfile = None
         
-    def initialize(self, config_dir: str, private_dir: str, shared_dir: str):
+    def initialize(self, config_dir: str, private_dir: str, shared_dir: str, force: bool = False):
         """
         Initialize Jarvis configuration directories and files.
-        
+
         :param config_dir: Directory for jarvis metadata
-        :param private_dir: Machine-local data directory  
+        :param private_dir: Machine-local data directory
         :param shared_dir: Shared data directory across all machines
+        :param force: Force override of existing repos and resource_graph files
         """
+        from jarvis_cd.util import logger
+
         # Create jarvis root directory
         self.jarvis_root.mkdir(parents=True, exist_ok=True)
-        
+
         # Create required directories
         Path(config_dir).mkdir(parents=True, exist_ok=True)
         Path(private_dir).mkdir(parents=True, exist_ok=True)
         Path(shared_dir).mkdir(parents=True, exist_ok=True)
-        
+
         # Initialize default configuration
         default_config = {
             'config_dir': str(Path(config_dir).absolute()),
@@ -55,32 +58,46 @@ class JarvisConfig:
             'current_pipeline': None,
             'hostfile': None
         }
-        
+
         # Save configuration
         self.save_config(default_config)
-        
-        # Initialize repos configuration with builtin repo
-        builtin_repo_path = self.get_builtin_repo_path()
-        
-        # Ensure we use absolute path and handle case where builtin might not be installed yet
-        if builtin_repo_path.exists():
-            builtin_repo_path_str = str(builtin_repo_path.absolute())
+
+        # Handle repos.yaml
+        repos_exists = self.repos_file.exists()
+        if repos_exists and not force:
+            logger.warning(f"Existing repos.yaml detected - preserving (use +force to override)")
+        elif repos_exists and force:
+            logger.warning(f"Existing repos.yaml detected - overriding due to +force")
+            builtin_repo_path = self.get_builtin_repo_path()
+            if builtin_repo_path.exists():
+                builtin_repo_path_str = str(builtin_repo_path.absolute())
+            else:
+                builtin_repo_path_str = str((self.jarvis_root / 'builtin').absolute())
+            default_repos = {'repos': [builtin_repo_path_str]}
+            self.save_repos(default_repos)
         else:
-            # Use the expected location even if it doesn't exist yet
-            builtin_repo_path_str = str((self.jarvis_root / 'builtin').absolute())
-            
-        default_repos = {
-            'repos': [builtin_repo_path_str]
-        }
-        self.save_repos(default_repos)
-        
-        # Initialize empty resource graph
-        default_resource_graph = {
-            'storage': {},
-            'network': {}
-        }
-        self.save_resource_graph(default_resource_graph)
-        
+            # File doesn't exist, create it
+            builtin_repo_path = self.get_builtin_repo_path()
+            if builtin_repo_path.exists():
+                builtin_repo_path_str = str(builtin_repo_path.absolute())
+            else:
+                builtin_repo_path_str = str((self.jarvis_root / 'builtin').absolute())
+            default_repos = {'repos': [builtin_repo_path_str]}
+            self.save_repos(default_repos)
+
+        # Handle resource_graph.yaml
+        resource_graph_exists = self.resource_graph_file.exists()
+        if resource_graph_exists and not force:
+            logger.warning(f"Existing resource_graph.yaml detected - preserving (use +force to override)")
+        elif resource_graph_exists and force:
+            logger.warning(f"Existing resource_graph.yaml detected - overriding due to +force")
+            default_resource_graph = {'storage': {}, 'network': {}}
+            self.save_resource_graph(default_resource_graph)
+        else:
+            # File doesn't exist, create it
+            default_resource_graph = {'storage': {}, 'network': {}}
+            self.save_resource_graph(default_resource_graph)
+
         print(f"Jarvis initialized at {self.jarvis_root}")
         print(f"Config directory: {config_dir}")
         print(f"Private directory: {private_dir}")

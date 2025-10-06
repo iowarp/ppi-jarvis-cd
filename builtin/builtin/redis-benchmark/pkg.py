@@ -132,9 +132,7 @@ class RedisBenchmark(Application):
         self.log('Starting the cluster', color=Color.YELLOW)
         Exec(' '.join(cmd),
              LocalExecInfo(env=self.mod_env,
-                           hostfile=hostfile,
-                           do_dbg=self.config['do_dbg'],
-                           dbg_port=self.config['dbg_port'])).run()
+                           hostfile=hostfile)).run()
 
     def stop(self):
         """
@@ -156,11 +154,7 @@ class RedisBenchmark(Application):
         for host in range(hostfile.hosts):
             Exec(f'redis-cli -p {self.config["port"]} -h {host} flushall',
                  LocalExecInfo(env=self.mod_env,
-                               hostfile=hostfile,
-                               do_dbg=self.config['do_dbg'],
-                               dbg_port=self.config['dbg_port'])).run()
+                               hostfile=hostfile)).run()
             Exec(f'redis-cli -p {self.config["port"]} -h {host} cluster reset',
                  LocalExecInfo(env=self.mod_env,
-                               hostfile=hostfile,
-                               do_dbg=self.config['do_dbg'],
-                               dbg_port=self.config['dbg_port'])).run()
+                               hostfile=hostfile)).run()
