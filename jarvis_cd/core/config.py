@@ -429,18 +429,14 @@ class JarvisConfig:
         """
         Find a package in registered repositories.
         Returns the full import path if found.
+        Searches repositories in order, respecting priority.
         """
-        # Check builtin repo first
-        builtin_path = self.get_builtin_repo_path()
-        if self._check_package_exists(builtin_path, 'builtin', pkg_name):
-            return f'builtin.{pkg_name}'
-            
-        # Check registered repos
+        # Check all registered repos in order (builtin is already in the list)
         for repo_path in self.repos['repos']:
             repo_name = Path(repo_path).name
             if self._check_package_exists(repo_path, repo_name, pkg_name):
                 return f'{repo_name}.{pkg_name}'
-                
+
         return None
         
     def _check_package_exists(self, repo_path: str, repo_name: str, pkg_name: str) -> bool:

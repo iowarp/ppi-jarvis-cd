@@ -521,19 +521,19 @@ class Pkg:
     def log(self, message, color=None):
         """
         Log a message with package context and optional color.
-        
+
         :param message: Message to log
-        :param color: Color to use (from jarvis_cd.util.logger.Color enum), defaults to package color
+        :param color: Color to use (from jarvis_cd.util.logger.Color enum), defaults to YELLOW for info messages
         """
         from jarvis_cd.util.logger import logger, Color
-        
+
         formatted_message = f"[{self.__class__.__name__}] {message}"
-        
+
         if color is not None:
             logger.print(color, formatted_message)
         else:
-            # Default to package color (light green for package operations)
-            logger.package(formatted_message)
+            # Default to yellow for info messages
+            logger.warning(formatted_message)
         
     def sleep(self, time_sec=None):
         """

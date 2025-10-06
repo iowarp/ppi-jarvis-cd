@@ -171,12 +171,16 @@ class Pipeline:
     
     def start(self):
         """Start all packages in the pipeline"""
+        from jarvis_cd.util.logger import logger, Color
+
         logger.pipeline(f"Starting pipeline: {self.name}")
 
         # Start each package with environment propagation
         for pkg_def in self.packages:
             try:
-                logger.package(f"Starting package: {pkg_def['pkg_id']}")
+                # Print BEGIN message
+                logger.success(f"[{pkg_def['pkg_type']}] [START] BEGIN")
+
                 pkg_instance = self._load_package_instance(pkg_def, self.env)
 
                 # Apply interceptors to this package before starting
@@ -185,10 +189,13 @@ class Pipeline:
                 if hasattr(pkg_instance, 'start'):
                     pkg_instance.start()
                 else:
-                    print(f"Package {pkg_def['pkg_id']} has no start method")
+                    logger.warning(f"Package {pkg_def['pkg_id']} has no start method")
 
                 # Propagate environment changes to next packages
                 self.env.update(pkg_instance.env)
+
+                # Print END message
+                logger.success(f"[{pkg_def['pkg_type']}] [START] END")
 
             except Exception as e:
                 logger.error(f"Error starting package {pkg_def['pkg_id']}: {e}")
@@ -196,62 +203,84 @@ class Pipeline:
     
     def stop(self):
         """Stop all packages in the pipeline"""
+        from jarvis_cd.util.logger import logger, Color
+
         logger.pipeline(f"Stopping pipeline: {self.name}")
-        
+
         # Stop each package in reverse order
         for pkg_def in reversed(self.packages):
             try:
-                logger.package(f"Stopping package: {pkg_def['pkg_id']}")
+                # Print BEGIN message
+                logger.success(f"[{pkg_def['pkg_type']}] [STOP] BEGIN")
+
                 pkg_instance = self._load_package_instance(pkg_def, self.env)
-                
+
                 if hasattr(pkg_instance, 'stop'):
                     pkg_instance.stop()
                 else:
-                    print(f"Package {pkg_def['pkg_id']} has no stop method")
-                    
+                    logger.warning(f"Package {pkg_def['pkg_id']} has no stop method")
+
+                # Print END message
+                logger.success(f"[{pkg_def['pkg_type']}] [STOP] END")
+
             except Exception as e:
-                print(f"Error stopping package {pkg_def['pkg_id']}: {e}")
+                logger.error(f"Error stopping package {pkg_def['pkg_id']}: {e}")
     
     def kill(self):
         """Force kill all packages in the pipeline"""
+        from jarvis_cd.util.logger import logger, Color
+
         logger.pipeline(f"Killing pipeline: {self.name}")
-        
+
         # Kill each package
         for pkg_def in self.packages:
             try:
-                logger.package(f"Killing package: {pkg_def['pkg_id']}")
+                # Print BEGIN message
+                logger.success(f"[{pkg_def['pkg_type']}] [KILL] BEGIN")
+
                 pkg_instance = self._load_package_instance(pkg_def, self.env)
-                
+
                 if hasattr(pkg_instance, 'kill'):
                     pkg_instance.kill()
                 else:
-                    print(f"Package {pkg_def['pkg_id']} has no kill method")
-                    
+                    logger.warning(f"Package {pkg_def['pkg_id']} has no kill method")
+
+                # Print END message
+                logger.success(f"[{pkg_def['pkg_type']}] [KILL] END")
+
             except Exception as e:
-                print(f"Error killing package {pkg_def['pkg_id']}: {e}")
+                logger.error(f"Error killing package {pkg_def['pkg_id']}: {e}")
     
     def status(self) -> str:
         """Get status of the pipeline and its packages"""
+        from jarvis_cd.util.logger import logger, Color
+
         if not self.name:
             return "No pipeline loaded"
-            
+
         status_info = [f"Pipeline: {self.name}"]
         status_info.append("Packages:")
-        
+
         # Show status for all packages
         for pkg_def in self.packages:
             try:
+                # Print BEGIN message
+                logger.success(f"[{pkg_def['pkg_type']}] [STATUS] BEGIN")
+
                 pkg_instance = self._load_package_instance(pkg_def, self.env)
-                
+
                 if pkg_instance and hasattr(pkg_instance, 'status'):
                     pkg_status = pkg_instance.status()
                     status_info.append(f"  {pkg_def['pkg_id']}: {pkg_status}")
                 else:
                     status_info.append(f"  {pkg_def['pkg_id']}: no status method")
-                    
+
+                # Print END message
+                logger.success(f"[{pkg_def['pkg_type']}] [STATUS] END")
+
             except Exception as e:
                 status_info.append(f"  {pkg_def['pkg_id']}: error ({e})")
-        
+
         return "\n".join(status_info)
     
     def run(self, load_type: Optional[str] = None, pipeline_file: Optional[str] = None):
@@ -307,12 +336,16 @@ class Pipeline:
         :param pkg_def: Package definition dictionary
         :param pkg_type_label: Label for logging ("package" or "interceptor")
         """
+        from jarvis_cd.util.logger import logger, Color
+
         try:
+            # Print BEGIN message
+            logger.success(f"[{pkg_def['pkg_type']}] [CONFIGURE] BEGIN")
+
             pkg_instance = self._load_package_instance(pkg_def, self.env)
             if hasattr(pkg_instance, 'configure'):
                 # Configure the package with its config
                 updated_config = pkg_instance.configure(**pkg_instance.config)
-                print(f"Configured {pkg_type_label}: {pkg_def['pkg_id']}")
 
                 # Update pkg_def with the final config from the package
                 if updated_config:
@@ -322,8 +355,16 @@ class Pipeline:
 
                 # Update the package environment in the pipeline's env
                 self.env.update(pkg_instance.env)
+
+            # Print END message
+            logger.success(f"[{pkg_def['pkg_type']}] [CONFIGURE] END")
+
         except Exception as e:
-            print(f"Error configuring {pkg_type_label} {pkg_def['pkg_id']}: {e}")
+            import traceback
+            logger.error(f"Error configuring {pkg_type_label} {pkg_def['pkg_id']}: {e}")
+            logger.error("Full traceback:")
+            traceback.print_exc()
+            raise
     
     def append(self, package_spec: str, package_alias: Optional[str] = None):
         """
@@ -411,21 +452,28 @@ class Pipeline:
     
     def clean(self):
         """Clean all data for packages in the pipeline"""
+        from jarvis_cd.util.logger import logger, Color
+
         logger.pipeline(f"Cleaning pipeline: {self.name}")
-        
+
         # Clean each package
         for pkg_def in self.packages:
             try:
-                logger.package(f"Cleaning package: {pkg_def['pkg_id']}")
+                # Print BEGIN message
+                logger.success(f"[{pkg_def['pkg_type']}] [CLEAN] BEGIN")
+
                 pkg_instance = self._load_package_instance(pkg_def, self.env)
-                
+
                 if hasattr(pkg_instance, 'clean'):
                     pkg_instance.clean()
                 else:
-                    print(f"Package {pkg_def['pkg_id']} has no clean method")
-                    
+                    logger.warning(f"Package {pkg_def['pkg_id']} has no clean method")
+
+                # Print END message
+                logger.success(f"[{pkg_def['pkg_type']}] [CLEAN] END")
+
             except Exception as e:
-                print(f"Error cleaning package {pkg_def['pkg_id']}: {e}")
+                logger.error(f"Error cleaning package {pkg_def['pkg_id']}: {e}")
     
     def configure_package(self, pkg_id: str, config_args: List[str]):
         """
@@ -605,8 +653,13 @@ class Pipeline:
                 "  1. A string referencing a named environment (e.g., env: production_environment)\n"
                 "  2. Omitted to auto-build from the current shell environment\n\n"
                 "To use custom environment variables:\n"
-                "  1. Create a named environment: jarvis ppl env build <env_name> <commands...>\n"
-                "  2. Reference it in your pipeline: env: <env_name>"
+                "  Option 1 - Create a named environment (reusable across pipelines):\n"
+                "    1. Create: jarvis env build <env_name> <commands...>\n"
+                "    2. Reference in pipeline YAML: env: <env_name>\n\n"
+                "  Option 2 - Build environment for current pipeline (pipeline-specific):\n"
+                "    1. Load pipeline: jarvis ppl load yaml <pipeline.yaml>\n"
+                "    2. Build environment: jarvis ppl env build <commands...>\n"
+                "    3. Pipeline will use the built environment automatically"
             )
         else:
             raise ValueError(
@@ -768,6 +821,13 @@ class Pipeline:
         """
         pkg_type = pkg_def['pkg_type']
 
+        # Resolve pkg_type to full specification (repo.package) if not already specified
+        if '.' not in pkg_type:
+            resolved_type = self.jarvis.jarvis_config.find_package(pkg_type)
+            if resolved_type:
+                pkg_type = resolved_type
+            # If not found, keep original (will fail later during loading)
+
         # Get default configuration from package
         default_config = self._get_package_default_config(pkg_type)
 
@@ -881,45 +941,51 @@ class Pipeline:
     def _apply_interceptors_to_package(self, pkg_instance, pkg_def):
         """
         Apply interceptors to a package instance during pipeline start.
-        
+
         :param pkg_instance: The package instance to apply interceptors to
         :param pkg_def: The package definition from pipeline configuration
         """
+        from jarvis_cd.util.logger import logger, Color
+
         # Get interceptors list from package configuration
         interceptors_list = pkg_def.get('config', {}).get('interceptors', [])
-        
+
         if not interceptors_list:
             return
-            
-        logger.package(f"Applying {len(interceptors_list)} interceptors to {pkg_def['pkg_id']}")
-        
+
+        logger.warning(f"Applying {len(interceptors_list)} interceptors to {pkg_def['pkg_id']}")
+
         for interceptor_name in interceptors_list:
             try:
                 # Find interceptor in pipeline-level interceptors
                 if interceptor_name not in self.interceptors:
-                    print(f"Warning: Interceptor '{interceptor_name}' not found in pipeline interceptors")
+                    logger.error(f"Warning: Interceptor '{interceptor_name}' not found in pipeline interceptors")
                     continue
-                    
+
                 interceptor_def = self.interceptors[interceptor_name]
-                
+
+                # Print BEGIN message with full interceptor type
+                logger.success(f"[{interceptor_def['pkg_type']}] [MODIFY_ENV] BEGIN")
+
                 # Load interceptor instance
                 interceptor_instance = self._load_package_instance(interceptor_def, self.env)
-                
+
                 # Verify it's an interceptor and has modify_env method
                 if not hasattr(interceptor_instance, 'modify_env'):
-                    print(f"Warning: Package '{interceptor_name}' does not have modify_env() method")
+                    logger.error(f"Warning: Package '{interceptor_name}' does not have modify_env() method")
                     continue
-                    
+
                 # Share the same mod_env reference between interceptor and package
                 interceptor_instance.mod_env = pkg_instance.mod_env
                 interceptor_instance.env = pkg_instance.env
-                
-                logger.package(f"Applying interceptor: {interceptor_name}")
-                
+
                 # Call modify_env on the interceptor to modify the shared environment
                 interceptor_instance.modify_env()
-                
+
                 # The mod_env is shared, so changes are automatically applied to the package
-                
+
+                # Print END message
+                logger.success(f"[{interceptor_def['pkg_type']}] [MODIFY_ENV] END")
+
             except Exception as e:
-                print(f"Error applying interceptor '{interceptor_name}': {e}")
+                logger.error(f"Error applying interceptor '{interceptor_name}': {e}")

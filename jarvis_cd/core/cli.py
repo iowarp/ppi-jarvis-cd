@@ -1318,9 +1318,29 @@ class JarvisCLI(ArgParse):
         argparse.print_help()
 
     def ppl_env_build(self):
-        """Build environment for current pipeline"""
+        """Build environment for current pipeline and reconfigure packages"""
         self._ensure_initialized()
         self.env_manager.build_pipeline_environment(self.remainder)
+
+        # Reconfigure packages with new environment
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+
+        if self.current_pipeline:
+            # Reload environment from env.yaml (don't reload full pipeline to avoid inline dict error)
+            from pathlib import Path
+            import yaml
+            pipeline_dir = self.jarvis_config.get_pipeline_dir(self.current_pipeline.name)
+            env_file = pipeline_dir / 'env.yaml'
+            if env_file.exists():
+                with open(env_file, 'r') as f:
+                    self.current_pipeline.env = yaml.safe_load(f)
+
+            # Reconfigure all packages with the new environment
+            self.current_pipeline.configure_all_packages()
+            print("Pipeline reconfigured with new environment")
         
     def ppl_env_copy(self):
         """Copy named environment to current pipeline"""

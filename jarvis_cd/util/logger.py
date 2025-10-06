@@ -49,7 +49,7 @@ class Logger:
     def print(self, color: Color, message: str, file=None, end: str = '\n'):
         """
         Print a colored message to the terminal.
-        
+
         :param color: Color to use for the message
         :param message: Message to print
         :param file: File to write to (default: stdout)
@@ -57,17 +57,17 @@ class Logger:
         """
         if file is None:
             file = sys.stdout
-            
+
         if self.enable_colors:
             formatted_message = f"{color.value}{message}{Color.RESET.value}"
         else:
             formatted_message = message
-            
-        print(formatted_message, file=file, end=end)
+
+        print(formatted_message, file=file, end=end, flush=True)
         
     def info(self, message: str, file=None, end: str = '\n'):
         """Print an info message in default color"""
-        print(message, file=file, end=end)
+        print(message, file=file, end=end, flush=True)
         
     def success(self, message: str, file=None, end: str = '\n'):
         """Print a success message in green"""
