@@ -1075,34 +1075,111 @@ exec_info = MpiExecInfo(
 
 ### Debugging with GdbServer
 
-The `GdbServer` class enables remote debugging by launching applications under gdbserver. This is particularly useful for debugging MPI applications or applications running on remote nodes.
+The `GdbServer` class enables remote debugging by launching applications under gdbserver. This is particularly useful for debugging MPI applications or applications running on remote nodes. The modern pattern uses a multi-command format that allows precise control over process allocation and environment settings.
 
-#### GdbServer Usage
+#### Understanding GdbServer
+
+The `GdbServer` class wraps your command with gdbserver:
 
 ```python
 from jarvis_cd.shell.process import GdbServer
 
-# Launch application under gdbserver
-GdbServer(cmd='./my_app --args', port=2345, exec_info=LocalExecInfo()).run()
+# Create a GdbServer instance
+gdb_server = GdbServer(cmd='./my_app --args', port=2345)
 
-# With MPI
-GdbServer(
-    cmd='my_mpi_app',
-    port=2345,
-    exec_info=MpiExecInfo(
-        env=self.mod_env,
-        hostfile=self.jarvis.hostfile,
-        nprocs=self.config['nprocs']
-    )
-).run()
+# Get the gdbserver command string
+gdbserver_cmd = gdb_server.get_cmd()  # Returns: "gdbserver :2345 ./my_app --args"
 ```
 
-#### Conditional Debugging Pattern
+The `get_cmd()` method returns the complete gdbserver command string that can be used with any execution method.
 
-Most packages should support optional debugging using a `do_dbg` configuration flag:
+#### Modern Pattern with LocalExec
+
+For local execution with debugging support, use the multi-command format with conditional debugging:
 
 ```python
-class MyApp(Application):
+from jarvis_cd.shell import Exec, LocalExecInfo
+from jarvis_cd.shell.process import GdbServer
+
+def start(self):
+    # Build your application command
+    app_cmd = f'{self.install_dir}/bin/my_app --config {self.config_path}'
+
+    # Create GdbServer wrapper
+    gdb_server = GdbServer(app_cmd, self.config.get('dbg_port', 2345))
+    gdbserver_cmd = gdb_server.get_cmd()
+
+    if self.config.get('do_dbg', False):
+        # Use multi-command format for debugging
+        cmd_list = [
+            {
+                'cmd': gdbserver_cmd,
+                'disable_preload': True  # Prevents LD_PRELOAD issues with gdbserver
+            },
+            {
+                'cmd': app_cmd,
+                'nprocs': 0  # Don't run the actual command when debugging
+            }
+        ]
+    else:
+        # Normal execution without debugging
+        cmd_list = app_cmd
+
+    Exec(cmd_list, LocalExecInfo(env=self.mod_env)).run()
+```
+
+**Key Points:**
+- `disable_preload`: Set to `True` for gdbserver to prevent LD_PRELOAD environment variables from interfering
+- When debugging is enabled, set the actual command's `nprocs` to 0 to prevent it from running
+- The multi-command format works with LocalExec when you need fine control
+
+#### Modern Pattern with MpiExec
+
+For MPI applications, the pattern allocates one process for gdbserver and the remaining processes for the application:
+
+```python
+from jarvis_cd.shell import Exec, MpiExecInfo
+from jarvis_cd.shell.process import GdbServer
+
+def start(self):
+    # Build your MPI application command
+    ior_cmd = f'ior -a {self.config["xfer"]} -t {self.config["tsize"]} -b {self.config["bsize"]}'
+
+    # Create GdbServer wrapper
+    gdb_server = GdbServer(ior_cmd, self.config.get('dbg_port', 4000))
+    gdbserver_cmd = gdb_server.get_cmd()
+
+    # Use multi-command format with process allocation
+    cmd_list = [
+        {
+            'cmd': gdbserver_cmd,
+            'nprocs': 1 if self.config.get('do_dbg', False) else 0,  # 1 process for gdbserver
+            'disable_preload': True  # Prevent LD_PRELOAD interference
+        },
+        {
+            'cmd': ior_cmd,
+            'nprocs': None  # Remaining processes (automatically calculated)
+        }
+    ]
+
+    Exec(cmd_list,
+         MpiExecInfo(env=self.mod_env,
+                     hostfile=self.jarvis.hostfile,
+                     nprocs=self.config['nprocs'],
+                     ppn=self.config['ppn'])).run()
+```
+
+**Process Allocation Explained:**
+- When `do_dbg` is `True`: gdbserver gets 1 process, application gets `nprocs - 1`
+- When `do_dbg` is `False`: gdbserver gets 0 processes (doesn't run), application gets all `nprocs`
+- Setting `nprocs: None` means "use all remaining processes"
+
+#### Complete Working Example
+
+Here's a complete package implementation with debugging support based on the IOR pattern:
+
+```python
+class MyApplication(Application):
     def _configure_menu(self):
         return [
             {
@@ -1113,63 +1190,120 @@ class MyApp(Application):
             },
             {
                 'name': 'dbg_port',
-                'msg': 'GDB server port',
+                'msg': 'GDB server port for remote debugging',
                 'type': int,
-                'default': 2345
+                'default': 4000
+            },
+            {
+                'name': 'nprocs',
+                'msg': 'Number of MPI processes',
+                'type': int,
+                'default': 4
+            },
+            {
+                'name': 'ppn',
+                'msg': 'Processes per node',
+                'type': int,
+                'default': 1
             }
         ]
 
     def start(self):
-        # Build command
-        cmd = f'lmp -in {self.input_path}'
+        # Build the application command
+        app_cmd = f'{self.install_dir}/bin/myapp'
+        app_cmd += f' --input {self.config["input_file"]}'
+        app_cmd += f' --output {self.config["output_file"]}'
 
-        # Execute with or without debugging
-        if self.config['do_dbg']:
-            GdbServer(cmd, self.config['dbg_port'], LocalExecInfo(env=self.mod_env)).run()
-        else:
-            Exec(cmd, LocalExecInfo(env=self.mod_env)).run()
+        # Create GdbServer wrapper
+        gdb_server = GdbServer(app_cmd, self.config.get('dbg_port', 4000))
+        gdbserver_cmd = gdb_server.get_cmd()
+
+        # Prepare multi-command list for MPI execution
+        cmd_list = [
+            {
+                'cmd': gdbserver_cmd,
+                'nprocs': 1 if self.config.get('do_dbg', False) else 0,
+                'disable_preload': True
+            },
+            {
+                'cmd': app_cmd,
+                'nprocs': None  # Use remaining processes
+            }
+        ]
+
+        # Execute with MPI
+        Exec(cmd_list,
+             MpiExecInfo(env=self.mod_env,
+                         hostfile=self.jarvis.hostfile,
+                         nprocs=self.config['nprocs'],
+                         ppn=self.config['ppn'])).run()
+
+        print(f"Application started with {self.config['nprocs']} processes")
+        if self.config.get('do_dbg', False):
+            print(f"GDB server listening on port {self.config['dbg_port']}")
+            print(f"Connect with: gdb {self.install_dir}/bin/myapp")
+            print(f"Then run: target remote hostname:{self.config['dbg_port']}")
 ```
+
+#### The disable_preload Flag
+
+The `disable_preload` flag is crucial for gdbserver to work correctly:
+
+```python
+{
+    'cmd': gdbserver_cmd,
+    'disable_preload': True  # IMPORTANT: Always set this for gdbserver
+}
+```
+
+**Why it's needed:**
+- Many HPC environments use LD_PRELOAD for performance libraries or MPI wrappers
+- These preloaded libraries can interfere with gdbserver's operation
+- Setting `disable_preload: True` temporarily clears LD_PRELOAD for the gdbserver command
+- The actual application command still gets the full environment with LD_PRELOAD
 
 #### Connecting to GdbServer
 
-Once the application is running under gdbserver, connect from your local machine:
+Once your application is running under gdbserver, connect from your development machine:
 
 ```bash
-# Connect to gdbserver
-gdb ./my_app
-(gdb) target remote hostname:2345
+# First, ensure you have the same binary locally
+$ gdb /path/to/local/binary
+
+# Connect to the remote gdbserver
+(gdb) target remote hostname:4000
+
+# Load symbols if needed
+(gdb) symbol-file /path/to/binary.symbols
+
+# Set breakpoints
+(gdb) break main
+(gdb) break my_function
+
+# Continue execution
 (gdb) continue
 ```
 
-#### Multi-Process Debugging
+For MPI applications, you're debugging rank 0 by default. To debug other ranks, you would need to modify the pattern to assign gdbserver to specific ranks.
 
-For MPI applications, each process can run on a different port:
+#### Simplified Pattern for Quick Debugging
+
+If you don't need the multi-command complexity, here's a simpler pattern:
 
 ```python
 def start(self):
-    cmd = 'my_mpi_app'
+    cmd = f'{self.install_dir}/bin/my_app --config {self.config_path}'
 
-    if self.config['do_dbg']:
-        # Calculate unique port per process
-        base_port = self.config['dbg_port']
-
-        # Launch with gdbserver (MPI will spawn multiple instances)
-        GdbServer(
-            cmd,
-            base_port,  # MPI processes will use base_port, base_port+1, etc.
-            MpiExecInfo(
-                env=self.mod_env,
-                hostfile=self.jarvis.hostfile,
-                nprocs=self.config['nprocs']
-            )
-        ).run()
+    if self.config.get('do_dbg', False):
+        # Simple debugging with GdbServer
+        GdbServer(cmd, self.config['dbg_port'],
+                  LocalExecInfo(env=self.mod_env)).run()
     else:
-        Exec(cmd, MpiExecInfo(
-            env=self.mod_env,
-            hostfile=self.jarvis.hostfile,
-            nprocs=self.config['nprocs']
-        )).run()
+        # Normal execution
+        Exec(cmd, LocalExecInfo(env=self.mod_env)).run()
 ```
+
+This simpler pattern works well for non-MPI applications or when you want to debug all processes.
 
 ## Utility Classes
 

@@ -1,0 +1,24 @@
+FROM iowarp/iowarp-deps:latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy project files
+COPY . /app
+
+# Install build dependencies and Python dependencies from pyproject.toml
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install setuptools-scm && \
+    pip install pyyaml pandas && \
+    pip install pytest pytest-cov
+
+# Install the jarvis_cd package in editable mode
+# This ensures the package and all its modules are importable in tests
+RUN pip install -e .
+
+# Load MPI via spack and run tests
+# The entrypoint will be set to run tests
+ENTRYPOINT ["/bin/bash", "-c", "source /opt/spack/share/spack/setup-env.sh && spack load mpi && exec \"$@\"", "--"]
+
+# Default command runs pytest
+CMD ["pytest", "-xvs", "test/"]
