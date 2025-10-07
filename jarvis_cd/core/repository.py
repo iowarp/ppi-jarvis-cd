@@ -39,11 +39,26 @@ class RepositoryManager:
         # Check if it looks like a valid repository
         repo_name = repo_path.name
         expected_subdir = repo_path / repo_name
-        
+
         if not expected_subdir.exists():
-            print(f"Warning: Repository {repo_path} does not contain expected subdirectory {repo_name}")
-            print("Expected structure: repo_name/repo_name/package_name/package.py")
-            
+            raise ValueError(
+                f"Invalid repository structure: {repo_path} does not contain subdirectory '{repo_name}'\n"
+                f"Expected structure: {repo_name}/{repo_name}/package_name/pkg.py\n"
+                f"Missing directory: {expected_subdir}\n\n"
+                f"To fix this, ensure your repository follows the required structure:\n"
+                f"  {repo_name}/\n"
+                f"  ├── {repo_name}/           # Required subdirectory with same name\n"
+                f"  │   ├── package1/\n"
+                f"  │   │   └── pkg.py\n"
+                f"  │   └── package2/\n"
+                f"  │       └── pkg.py\n"
+                f"  └── pipelines/          # Optional pipeline index\n"
+                f"      └── example.yaml"
+            )
+
+        if not expected_subdir.is_dir():
+            raise ValueError(f"Expected subdirectory exists but is not a directory: {expected_subdir}")
+
         self.jarvis_config.add_repo(str(repo_path), force=force)
         
     def remove_repository(self, repo_path: str):

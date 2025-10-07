@@ -748,11 +748,20 @@ class JarvisCLI(ArgParse):
             }
         ])
         
+    def _ensure_config_loaded(self):
+        """Ensure JarvisConfig is loaded (doesn't require full initialization)"""
+        if self.jarvis_config is None:
+            self.jarvis_config = JarvisConfig()
+
+        # Initialize managers that don't require full Jarvis initialization
+        if self.repo_manager is None:
+            self.repo_manager = RepositoryManager(self.jarvis_config)
+
     def _ensure_initialized(self):
         """Ensure Jarvis is initialized before running commands"""
         if self.jarvis_config is None:
             self.jarvis_config = JarvisConfig()
-            
+
         if not self.jarvis_config.is_initialized():
             print("Error: Jarvis not initialized. Run 'jarvis init' first.")
             sys.exit(1)
@@ -1146,25 +1155,25 @@ class JarvisCLI(ArgParse):
         
     def repo_add(self):
         """Add repository"""
-        self._ensure_initialized()
+        self._ensure_config_loaded()
         repo_path = self.kwargs['repo_path']
         force = self.kwargs.get('force', False)
         self.repo_manager.add_repository(repo_path, force=force)
-        
+
     def repo_remove(self):
         """Remove repository by name"""
-        self._ensure_initialized()
+        self._ensure_config_loaded()
         repo_name = self.kwargs['repo_name']
         self.repo_manager.remove_repository_by_name(repo_name)
-        
+
     def repo_list(self):
         """List repositories"""
-        self._ensure_initialized()
+        self._ensure_config_loaded()
         self.repo_manager.list_repositories()
-        
+
     def repo_create(self):
         """Create new package in repository"""
-        self._ensure_initialized()
+        self._ensure_config_loaded()
         package_name = self.kwargs['package_name']
         package_type = self.kwargs['package_type']
         self.repo_manager.create_package(package_name, package_type)
