@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Main test service
+  test:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile
+    volumes:
+      - ../jarvis_cd:/app/jarvis_cd:ro
+      - ../test:/app/test:ro
+      - test-results:/app/htmlcov
+    environment:
+      - PYTHONPATH=/app
+      - PYTEST_ARGS=${PYTEST_ARGS:-}
+    command: >
+      python3 -m pytest test/unit/ -v
+      --cov=jarvis_cd
+      --cov-report=term-missing
+      --cov-report=html:/app/htmlcov
+      ${PYTEST_ARGS}
+
+  # Service for running only shell tests
+  test-shell:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile
+    volumes:
+      - ../jarvis_cd:/app/jarvis_cd:ro
+      - ../test:/app/test:ro
+      - test-results:/app/htmlcov
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      python3 -m pytest test/unit/shell/ -v
+      --cov=jarvis_cd.shell
+      --cov-report=term-missing
+
+  # Service for running only util tests
+  test-util:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile
+    volumes:
+      - ../jarvis_cd:/app/jarvis_cd:ro
+      - ../test:/app/test:ro
+      - test-results:/app/htmlcov
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      python3 -m pytest test/unit/util/ -v
+      --cov=jarvis_cd.util
+      --cov-report=term-missing
+
+  # Service for running only core tests
+  test-core:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile
+    volumes:
+      - ../jarvis_cd:/app/jarvis_cd:ro
+      - ../test:/app/test:ro
+      - test-results:/app/htmlcov
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      python3 -m pytest test/unit/core/ -v
+      --cov=jarvis_cd.core
+      --cov-report=term-missing
+
+  # Service for running parallel tests
+  test-parallel:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile
+    volumes:
+      - ../jarvis_cd:/app/jarvis_cd:ro
+      - ../test:/app/test:ro
+      - test-results:/app/htmlcov
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      python3 -m pytest test/unit/ -v -n auto
+      --cov=jarvis_cd
+      --cov-report=term-missing
+      --cov-report=html:/app/htmlcov
+
+volumes:
+  test-results:
