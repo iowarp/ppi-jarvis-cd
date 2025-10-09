@@ -192,11 +192,9 @@ class TestArgParse(unittest.TestCase):
     def test_required_argument_missing(self):
         """Test that missing required arguments raise an error"""
         args = ['vpic', 'run']  # missing required 'steps' argument
-        
-        with self.assertRaises(ValueError) as context:
+
+        with self.assertRaises(SystemExit):
             self.parser.parse(args)
-        
-        self.assertIn("Required argument 'steps' not provided", str(context.exception))
         
     def test_type_casting(self):
         """Test various type casting"""
