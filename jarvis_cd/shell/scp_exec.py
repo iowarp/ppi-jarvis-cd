@@ -147,7 +147,12 @@ class ScpExec(CoreExec):
         """Execute SCP for list of (src, dst) tuples"""
         for src, dst in path_tlist:
             self.scp_nodes.append(_Scp(src, dst, self.exec_info))
-            
+
+    def run(self):
+        """Execute SCP operations (already done in __init__)"""
+        # SCP operations are started in __init__ via _exec_* methods
+        pass
+
     def wait_all_scp(self) -> Dict[str, int]:
         """
         Wait for all SCP operations to complete.
@@ -239,7 +244,7 @@ class PscpExec(CoreExec):
         
         for hostname in self.exec_info.hostfile.hosts:
             # Create single-host hostfile for this SCP operation
-            host_hostfile = Hostfile([hostname])
+            host_hostfile = Hostfile(hosts=[hostname], find_ips=False)
             
             # Create SCP exec info for this host
             scp_info = ScpExecInfo(

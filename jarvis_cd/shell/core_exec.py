@@ -133,7 +133,9 @@ class LocalExec(CoreExec):
         # Set up environment
         if self.exec_info.env:
             env = os.environ.copy()
-            env.update(self.exec_info.env)
+            # Convert all env values to strings
+            for key, value in self.exec_info.env.items():
+                env[key] = str(value)
         else:
             env = os.environ
         

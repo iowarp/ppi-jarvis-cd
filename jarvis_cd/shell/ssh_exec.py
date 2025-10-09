@@ -88,40 +88,53 @@ class SshExec(LocalExec):
     def _build_remote_command(self, cmd: str, exec_info: SshExecInfo) -> str:
         """
         Build the command to execute on the remote host.
-        
+
         :param cmd: Original command
         :param exec_info: SSH execution information
         :return: Remote command string
         """
         cmd_parts = []
-        
-        # Change directory if specified
+        env_prefix = []
+
+        # Change directory if specified (must use && since it's a separate command)
         if exec_info.cwd:
             cmd_parts.append(f'cd {exec_info.cwd}')
-            
-        # Set environment variables
+
+        # Set environment variables (these go before the command on same line)
         if exec_info.env:
-            env_assignments = []
             for key, value in exec_info.env.items():
                 # Escape special characters in environment values
-                escaped_value = str(value).replace("'", "'\"'\"'")
-                env_assignments.append(f"{key}='{escaped_value}'")
-            cmd_parts.append(' '.join(env_assignments))
-            
+                # Use double quotes to allow spaces, and escape internal double quotes
+                escaped_value = str(value).replace('"', '\\"')
+                env_prefix.append(f'{key}="{escaped_value}"')
+
+        # Build the final command with env vars, sudo, and the actual command
+        final_cmd_parts = []
+
+        # Add environment variables
+        if env_prefix:
+            final_cmd_parts.append(' '.join(env_prefix))
+
         # Add sudo if requested
         if exec_info.sudo:
             if exec_info.sudoenv and exec_info.env:
                 # Preserve environment with sudo
-                sudo_cmd = 'sudo -E'
+                final_cmd_parts.append('sudo -E')
             else:
-                sudo_cmd = 'sudo'
-            cmd_parts.append(sudo_cmd)
-            
+                final_cmd_parts.append('sudo')
+
         # Add the actual command
-        cmd_parts.append(cmd)
-        
-        # Join with && for sequential execution
-        return ' && '.join(cmd_parts) if len(cmd_parts) > 1 else cmd_parts[0]
+        final_cmd_parts.append(cmd)
+
+        # Join env vars, sudo, and command with spaces (they run together)
+        final_cmd = ' '.join(final_cmd_parts)
+
+        # Add cd command if needed (joined with &&)
+        if cmd_parts:
+            cmd_parts.append(final_cmd)
+            return ' && '.join(cmd_parts)
+        else:
+            return final_cmd
 
 
 class PsshExec(CoreExec):
