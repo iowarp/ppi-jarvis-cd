@@ -38,15 +38,22 @@ class ExampleApp(Application):
         """
         # Create output directory
         os.makedirs(self.private_dir, exist_ok=True)
+        os.makedirs(self.shared_dir, exist_ok=True)
         self.output_path = os.path.join(self.private_dir, self.config['output_file'])
 
-        self.log(f'Modified environment variables: {self.mod_env["LD_PRELOAD"]}')
+        self.log(f'Modified environment variables: {self.mod_env.get("LD_PRELOAD", "None")}')
+
+        # Create marker file for configure command
+        marker_path = os.path.join(self.shared_dir, 'configure.marker')
+        with open(marker_path, 'w') as f:
+            f.write(f'Configured at: {self.config["message"]}\n')
+        self.log(f'Created configure marker: {marker_path}')
 
     def _init(self):
         """
         Initialize the example application
         """
-        pass
+        self.output_path = None
 
     def start(self):
         """
@@ -54,51 +61,58 @@ class ExampleApp(Application):
         """
         self.log(f'Starting ExampleApp with message: {self.config["message"]}')
 
-        mod_env = self.mod_env.copy()
-        mod_env.pop('LD_PRELOAD')
+        # Create marker file for start command
+        marker_path = os.path.join(self.shared_dir, 'start.marker')
+        with open(marker_path, 'w') as f:
+            f.write(f'Started with message: {self.config["message"]}\n')
+        self.log(f'Created start marker: {marker_path}')
 
-
-        self.log(f'Environment variables: {self.env == mod_env}')
-        self.log(f'Modified environment variables: {self.mod_env['LD_PRELOAD']}')
-        
-#         # Create a simple script to run
-#         script_content = f'''#!/bin/bash
-# echo "ExampleApp starting..."
-# echo "Message: {self.config['message']}"
-# echo "Current environment variables:"
-# env | grep -E "(LD_PRELOAD|EXAMPLE_)" || echo "No relevant env vars found"
-# echo "Creating output file: {self.output_path}"
-# echo "{self.config['message']}" > "{self.output_path}"
-# echo "ExampleApp finished successfully"
-# '''
-        
-#         script_path = os.path.join(self.private_dir, 'run_example.sh')
-#         with open(script_path, 'w') as f:
-#             f.write(script_content)
-#         os.chmod(script_path, 0o755)
-        
-#         # Execute the script
-#         cmd = f'bash {script_path}'
-#         exec_info = LocalExecInfo(
-#             env=self.mod_env,
-#             hide_output=self.config['hide_output']
-#         )
-        
-#         self.exec = Exec(cmd, exec_info).run()
-#         self.exit_code = self.exec.exit_code
+        # Create output file as well if output_path is set
+        if self.output_path:
+            with open(self.output_path, 'w') as f:
+                f.write(f'{self.config["message"]}\n')
+            self.log(f'Created output file: {self.output_path}')
 
     def stop(self):
         """
-        Stop the application (nothing to do for this example)
+        Stop the application
         """
         self.log('ExampleApp stopped')
 
+        # Create marker file for stop command
+        marker_path = os.path.join(self.shared_dir, 'stop.marker')
+        with open(marker_path, 'w') as f:
+            f.write('Stopped\n')
+        self.log(f'Created stop marker: {marker_path}')
+
+    def kill(self):
+        """
+        Kill the application
+        """
+        self.log('ExampleApp killed')
+
+        # Create marker file for kill command
+        marker_path = os.path.join(self.shared_dir, 'kill.marker')
+        with open(marker_path, 'w') as f:
+            f.write('Killed\n')
+        self.log(f'Created kill marker: {marker_path}')
+
     def clean(self):
         """
-        Clean up application data
+        Clean up application data - this is the 'clear' functionality
         """
         self.log('Cleaning ExampleApp data')
-        if os.path.exists(self.output_path):
+
+        # Remove all marker files
+        marker_files = ['start.marker', 'stop.marker', 'kill.marker', 'configure.marker']
+        for marker in marker_files:
+            marker_path = os.path.join(self.shared_dir, marker)
+            if os.path.exists(marker_path):
+                os.remove(marker_path)
+                self.log(f'Removed marker file: {marker_path}')
+
+        # Remove output file
+        if hasattr(self, 'output_path') and os.path.exists(self.output_path):
             os.remove(self.output_path)
             self.log(f'Removed output file: {self.output_path}')
 

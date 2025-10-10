@@ -483,41 +483,7 @@ class Pkg:
                 return lib_path
                 
         return None
-        
-    def add_interceptor(self, pkg_name: str, interceptor_instance):
-        """
-        Add an interceptor package instance to this package's configuration.
-        Interceptors are stored as a dictionary mapping pkg_name to constructed package instances.
-        
-        :param pkg_name: Name/identifier for the interceptor package
-        :param interceptor_instance: Constructed interceptor package instance
-        """
-        if not isinstance(self.config.get('interceptors'), dict):
-            self.config['interceptors'] = {}
-            
-        self.config['interceptors'][pkg_name] = interceptor_instance
-        
-    def get_interceptors(self) -> Dict[str, Any]:
-        """
-        Get all interceptors associated with this package.
-        
-        :return: Dictionary mapping interceptor names to instances
-        """
-        return self.config.get('interceptors', {})
-        
-    def remove_interceptor(self, pkg_name: str) -> bool:
-        """
-        Remove an interceptor from this package's configuration.
-        
-        :param pkg_name: Name/identifier of the interceptor to remove
-        :return: True if interceptor was removed, False if not found
-        """
-        interceptors = self.config.get('interceptors', {})
-        if pkg_name in interceptors:
-            del interceptors[pkg_name]
-            return True
-        return False
-        
+    
     def log(self, message, color=None):
         """
         Log a message with package context and optional color.

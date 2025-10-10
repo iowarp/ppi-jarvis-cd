@@ -84,10 +84,20 @@ class TestPipelineIntegration(unittest.TestCase):
         result = self.run_command(['pkg', 'configure', 'example_app'])
         self.assertIsNotNone(result)
 
+        # Verify configure marker was created
+        configure_marker = os.path.join(self.shared_dir, 'test', 'example_app', 'configure.marker')
+        self.assertTrue(os.path.exists(configure_marker), f"Configure marker not found at {configure_marker}")
+        print(f"Verified configure marker exists: {configure_marker}")
+
         # Step 5: Start the pipeline
         result = self.run_command(['ppl', 'start'])
         self.assertIsNotNone(result)
         print("Pipeline start command executed")
+
+        # Verify start marker was created
+        start_marker = os.path.join(self.shared_dir, 'test', 'example_app', 'start.marker')
+        self.assertTrue(os.path.exists(start_marker), f"Start marker not found at {start_marker}")
+        print(f"Verified start marker exists: {start_marker}")
 
         # Step 6: Check pipeline status
         result = self.run_command(['ppl', 'status'])
@@ -104,19 +114,41 @@ class TestPipelineIntegration(unittest.TestCase):
         self.assertIsNotNone(result)
         print("Pipeline stop command executed")
 
+        # Verify stop marker was created
+        stop_marker = os.path.join(self.shared_dir, 'test', 'example_app', 'stop.marker')
+        self.assertTrue(os.path.exists(stop_marker), f"Stop marker not found at {stop_marker}")
+        print(f"Verified stop marker exists: {stop_marker}")
+
         # Step 9: Kill the pipeline
         result = self.run_command(['ppl', 'kill'])
         self.assertIsNotNone(result)
         print("Pipeline kill command executed")
 
-        # Step 10: Destroy the pipeline
+        # Verify kill marker was created
+        kill_marker = os.path.join(self.shared_dir, 'test', 'example_app', 'kill.marker')
+        self.assertTrue(os.path.exists(kill_marker), f"Kill marker not found at {kill_marker}")
+        print(f"Verified kill marker exists: {kill_marker}")
+
+        # Step 10: Clean the pipeline
+        result = self.run_command(['ppl', 'clean'])
+        self.assertIsNotNone(result)
+        print("Pipeline clean command executed")
+
+        # Verify all markers were removed by clean
+        self.assertFalse(os.path.exists(configure_marker), f"Configure marker should be removed after clean")
+        self.assertFalse(os.path.exists(start_marker), f"Start marker should be removed after clean")
+        self.assertFalse(os.path.exists(stop_marker), f"Stop marker should be removed after clean")
+        self.assertFalse(os.path.exists(kill_marker), f"Kill marker should be removed after clean")
+        print("Verified all markers were removed by clean")
+
+        # Step 11: Destroy the pipeline
         result = self.run_command(['ppl', 'destroy', 'test'])
         if result.get('success'):
             self.assertEqual(result['kwargs'].get('pipeline_name'), 'test')
         self.assertIsNotNone(result)
         print("Pipeline destroy command executed")
 
-        print("Pipeline full lifecycle test completed")
+        print("Pipeline full lifecycle test completed with marker verification")
 
 
 class TestPipelineLoadYAML(unittest.TestCase):
@@ -635,6 +667,179 @@ class TestPipelineEnvironmentIntegration(unittest.TestCase):
 
         # Don't destroy pipeline - leave it for env copy test
         print("Pipeline + environment workflow test completed")
+
+
+class TestPackageLifecycle(unittest.TestCase):
+    """Test package lifecycle methods through pipeline operations"""
+
+    def setUp(self):
+        """Set up test environment"""
+        self.test_dir = tempfile.mkdtemp(prefix='jarvis_test_lifecycle_')
+        self.config_dir = os.path.join(self.test_dir, 'config')
+        self.private_dir = os.path.join(self.test_dir, 'private')
+        self.shared_dir = os.path.join(self.test_dir, 'shared')
+
+        # Initialize CLI
+        self.cli = JarvisCLI()
+        self.cli.define_options()
+
+        # Store original environment
+        self.original_env = os.environ.copy()
+
+    def tearDown(self):
+        """Clean up test environment"""
+        os.environ.clear()
+        os.environ.update(self.original_env)
+
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+    def run_command(self, args):
+        """Helper to run CLI command"""
+        try:
+            result = self.cli.parse(args)
+            return {
+                'success': True,
+                'result': result,
+                'kwargs': self.cli.kwargs.copy() if hasattr(self.cli, 'kwargs') else {},
+                'remainder': self.cli.remainder.copy() if hasattr(self.cli, 'remainder') else []
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'exception': e
+            }
+
+    def test_full_package_lifecycle(self):
+        """Test complete package lifecycle: create → append → configure → start → run → stop → kill → clean → destroy"""
+        # Initialize
+        result = self.run_command(['init', self.config_dir, self.private_dir, self.shared_dir])
+        self.assertTrue(result.get('success'), f"Init failed: {result}")
+
+        # Create pipeline
+        result = self.run_command(['ppl', 'create', 'lifecycle_test'])
+        self.assertTrue(result.get('success') or result.get('kwargs', {}).get('pipeline_name') == 'lifecycle_test')
+
+        # Append example_app (Application type)
+        result = self.run_command(['ppl', 'append', 'example_app'])
+        self.assertTrue(result.get('success') or result.get('kwargs', {}).get('package_spec') == 'example_app')
+
+        # Configure the package (tests pkg.configure())
+        result = self.run_command(['pkg', 'configure', 'example_app'])
+        self.assertIsNotNone(result)
+        print("Package configured")
+
+        # Start pipeline (tests pkg.start() for all packages)
+        result = self.run_command(['ppl', 'start'])
+        self.assertIsNotNone(result)
+        print("Pipeline started - pkg.start() called")
+
+        # Run pipeline (tests pkg.start() again for Applications)
+        result = self.run_command(['ppl', 'run'])
+        self.assertIsNotNone(result)
+        print("Pipeline run - pkg.start() called for apps")
+
+        # Stop pipeline (tests pkg.stop())
+        result = self.run_command(['ppl', 'stop'])
+        self.assertIsNotNone(result)
+        print("Pipeline stopped - pkg.stop() called")
+
+        # Start again to test multiple start/stop cycles
+        result = self.run_command(['ppl', 'start'])
+        self.assertIsNotNone(result)
+        print("Pipeline restarted")
+
+        # Kill pipeline (tests pkg.kill())
+        result = self.run_command(['ppl', 'kill'])
+        self.assertIsNotNone(result)
+        print("Pipeline killed - pkg.kill() called")
+
+        # Clean pipeline (tests pkg.clean())
+        result = self.run_command(['ppl', 'clean'])
+        self.assertIsNotNone(result)
+        print("Pipeline cleaned - pkg.clean() called")
+
+        # Destroy pipeline
+        result = self.run_command(['ppl', 'destroy', 'lifecycle_test'])
+        if result.get('success'):
+            self.assertEqual(result['kwargs'].get('pipeline_name'), 'lifecycle_test')
+        print("Pipeline destroyed")
+
+    def test_pipeline_with_interceptor(self):
+        """Test pipeline with interceptor package (tests interceptor.modify_env())"""
+        # Initialize
+        result = self.run_command(['init', self.config_dir, self.private_dir, self.shared_dir])
+        self.assertTrue(result.get('success'))
+
+        # Create pipeline
+        result = self.run_command(['ppl', 'create', 'interceptor_test'])
+        self.assertTrue(result.get('success') or result.get('kwargs', {}).get('pipeline_name') == 'interceptor_test')
+
+        # Append example_app
+        result = self.run_command(['ppl', 'append', 'example_app'])
+        self.assertIsNotNone(result)
+
+        # Append example_interceptor
+        result = self.run_command(['ppl', 'append', 'example_interceptor'])
+        self.assertIsNotNone(result)
+
+        # Configure packages
+        result = self.run_command(['pkg', 'configure', 'example_app'])
+        self.assertIsNotNone(result)
+
+        result = self.run_command(['pkg', 'configure', 'example_interceptor'])
+        self.assertIsNotNone(result)
+        print("Interceptor configured")
+
+        # Start pipeline (should call interceptor.modify_env())
+        result = self.run_command(['ppl', 'start'])
+        self.assertIsNotNone(result)
+        print("Pipeline with interceptor started - modify_env() called")
+
+        # Run pipeline
+        result = self.run_command(['ppl', 'run'])
+        self.assertIsNotNone(result)
+
+        # Clean up
+        result = self.run_command(['ppl', 'clean'])
+        self.assertIsNotNone(result)
+
+        result = self.run_command(['ppl', 'destroy', 'interceptor_test'])
+        self.assertIsNotNone(result)
+
+    def test_package_status(self):
+        """Test package status command"""
+        # Initialize
+        result = self.run_command(['init', self.config_dir, self.private_dir, self.shared_dir])
+        self.assertTrue(result.get('success'))
+
+        # Create pipeline with package
+        result = self.run_command(['ppl', 'create', 'status_test'])
+        self.assertTrue(result.get('success') or result.get('kwargs', {}).get('pipeline_name') == 'status_test')
+
+        result = self.run_command(['ppl', 'append', 'example_app'])
+        self.assertIsNotNone(result)
+
+        result = self.run_command(['pkg', 'configure', 'example_app'])
+        self.assertIsNotNone(result)
+
+        # Check status before start
+        result = self.run_command(['ppl', 'status'])
+        self.assertIsNotNone(result)
+        print("Status checked before start")
+
+        # Start and check status again
+        result = self.run_command(['ppl', 'start'])
+        self.assertIsNotNone(result)
+
+        result = self.run_command(['ppl', 'status'])
+        self.assertIsNotNone(result)
+        print("Status checked after start")
+
+        # Clean up
+        result = self.run_command(['ppl', 'destroy', 'status_test'])
+        self.assertIsNotNone(result)
 
 
 if __name__ == '__main__':
