@@ -202,11 +202,58 @@ class ArgParse:
                     return converted
                 return value
             # Try to parse as dict
-            try:
-                import ast
-                return ast.literal_eval(value) if isinstance(value, str) else dict(value)
-            except (ValueError, SyntaxError, TypeError):
+            if isinstance(value, str):
+                # Try Python literal syntax first (JSON-like format)
+                if (value.startswith('{') and value.endswith('}')) or (value.startswith('[') and value.endswith(']')):
+                    try:
+                        import ast
+                        result = ast.literal_eval(value)
+                        # Apply type conversions if arg_spec has args
+                        if isinstance(result, dict) and arg_spec and 'args' in arg_spec:
+                            converted = {}
+                            args_def = arg_spec.get('args', [])
+                            for arg_def in args_def:
+                                arg_name = arg_def['name']
+                                if arg_name in result:
+                                    converted[arg_name] = self._cast_value(result[arg_name], arg_def.get('type', str), arg_def)
+                            # Keep other keys as-is
+                            for k, v in result.items():
+                                if k not in converted:
+                                    converted[k] = v
+                            return converted if converted else result
+                        return result
+                    except (ValueError, SyntaxError, TypeError):
+                        pass
+
+                # Try key:value,key2:value2 format (only if not JSON-like)
+                if ':' in value and ',' in value and not value.startswith('{'):
+                    try:
+                        result = {}
+                        pairs = value.split(',')
+                        for pair in pairs:
+                            if ':' in pair:
+                                k, v = pair.split(':', 1)
+                                k = k.strip()
+                                v = v.strip()
+                                # Apply type conversion if arg_spec has args
+                                if arg_spec and 'args' in arg_spec:
+                                    for arg_def in arg_spec['args']:
+                                        if arg_def['name'] == k:
+                                            v = self._cast_value(v, arg_def.get('type', str), arg_def)
+                                            break
+                                result[k] = v
+                        if result:
+                            return result
+                    except Exception:
+                        pass
+
+                # Last resort: return as-is
                 return value
+            else:
+                try:
+                    return dict(value)
+                except (ValueError, TypeError):
+                    return value
         else:
             # For custom types (including SizeType), try direct conversion
             try:
@@ -304,9 +351,21 @@ class ArgParse:
                     self.print_menu_help(potential_menu)
                     return {}
 
-            # Default to empty command
-            cmd_name = ''
-            consumed = 0
+            # Check if there's an empty command defined (default command)
+            if '' in self.commands:
+                cmd_name = ''
+                consumed = 0
+            elif self.commands or self.menus:
+                # Unknown command - exit with error if there are menus or commands defined (but no default)
+                import sys
+                print(f"Error: Unknown command '{' '.join(args)}'")
+                print()
+                self.print_help()
+                sys.exit(1)
+            else:
+                # Default to empty command (if nothing is defined)
+                cmd_name = ''
+                consumed = 0
 
         self.current_command = cmd_name
         remaining_args = args[consumed:]
@@ -363,22 +422,26 @@ class ArgParse:
             arg = args[i]
 
             # Handle key=value format (for any argument, not just --)
+            # Only treat as key=value if key looks like a valid argument name (alphanumeric + underscore, no spaces)
             if '=' in arg and not arg.startswith('-'):
                 key, value = arg.split('=', 1)
-                # Remove surrounding quotes if present
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                elif value.startswith("'") and value.endswith("'"):
-                    value = value[1:-1]
+                # Check if key looks like an argument name (no spaces, alphanumeric/underscore)
+                if key and not ' ' in key and key.replace('_', '').replace('-', '').isalnum():
+                    # Remove surrounding quotes if present
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    elif value.startswith("'") and value.endswith("'"):
+                        value = value[1:-1]
 
-                arg_spec = self._get_argument_info(cmd_name, key)
-                if arg_spec:
-                    if arg_spec.get('type') == list:
-                        self.kwargs[arg_spec['name']] = self._parse_list_value(value, arg_spec)
-                    else:
-                        self.kwargs[arg_spec['name']] = self._cast_value(value, arg_spec.get('type', str), arg_spec)
-                    i += 1
-                    continue
+                    arg_spec = self._get_argument_info(cmd_name, key)
+                    if arg_spec:
+                        if arg_spec.get('type') == list:
+                            self.kwargs[arg_spec['name']] = self._parse_list_value(value, arg_spec)
+                        else:
+                            self.kwargs[arg_spec['name']] = self._cast_value(value, arg_spec.get('type', str), arg_spec)
+                        i += 1
+                        continue
+                    # If not a known arg, fall through to positional handling
 
             if arg.startswith('--'):
                 # Long option
@@ -391,26 +454,34 @@ class ArgParse:
                             self.kwargs[arg_spec['name']] = self._parse_list_value(value, arg_spec)
                         else:
                             self.kwargs[arg_spec['name']] = self._cast_value(value, arg_spec.get('type', str), arg_spec)
+                    else:
+                        # Unknown argument
+                        self._print_param_error(f"Unknown argument '{key}'", cmd_name)
                     i += 1
                 else:
                     # --key value format
                     key = arg[2:]
                     arg_spec = self._get_argument_info(cmd_name, key)
-                    if arg_spec and i + 1 < len(args):
-                        value = args[i + 1]
-                        if arg_spec.get('type') == list:
-                            # Append mode for lists without =
-                            if arg_spec['name'] not in self.kwargs:
-                                self.kwargs[arg_spec['name']] = []
-                            elif not isinstance(self.kwargs[arg_spec['name']], list):
-                                self.kwargs[arg_spec['name']] = [self.kwargs[arg_spec['name']]]
-                            parsed_item = self._parse_single_item(value, arg_spec)
-                            self.kwargs[arg_spec['name']].append(parsed_item)
+                    if arg_spec:
+                        if i + 1 < len(args):
+                            value = args[i + 1]
+                            if arg_spec.get('type') == list:
+                                # Append mode for lists without =
+                                if arg_spec['name'] not in self.kwargs:
+                                    self.kwargs[arg_spec['name']] = []
+                                elif not isinstance(self.kwargs[arg_spec['name']], list):
+                                    self.kwargs[arg_spec['name']] = [self.kwargs[arg_spec['name']]]
+                                parsed_item = self._parse_single_item(value, arg_spec)
+                                self.kwargs[arg_spec['name']].append(parsed_item)
+                            else:
+                                self.kwargs[arg_spec['name']] = self._cast_value(value, arg_spec.get('type', str), arg_spec)
+                            i += 2
                         else:
-                            self.kwargs[arg_spec['name']] = self._cast_value(value, arg_spec.get('type', str), arg_spec)
-                        i += 2
+                            # Missing value for argument
+                            self._print_param_error(f"Argument '{key}' requires a value", cmd_name)
                     else:
-                        i += 1
+                        # Unknown argument
+                        self._print_param_error(f"Unknown argument '{key}'", cmd_name)
             elif arg.startswith('+') and len(arg) > 1:
                 # +arg format for boolean true
                 key = arg[1:]
@@ -511,8 +582,8 @@ class ArgParse:
         """Print general help showing all available menus and commands"""
         print("Usage: [command] [options]")
         print()
-        
-        # Show top-level menus
+
+        # Show top-level menus and their commands
         top_level_menus = [name for name, menu in self.menus.items() if name and ' ' not in name]
         if top_level_menus:
             print("Available menus:")
@@ -520,10 +591,20 @@ class ArgParse:
                 menu = self.menus[menu_name]
                 msg = menu.get('msg', '')
                 print(f"  {menu_name:<15} {msg}")
+
+                # Show commands under this menu
+                if menu['commands']:
+                    for cmd_name in menu['commands']:
+                        if cmd_name in self.commands:
+                            cmd = self.commands[cmd_name]
+                            # Show command with indentation
+                            display_name = cmd['cmd_name']
+                            cmd_msg = cmd.get('msg', '')
+                            print(f"    {display_name:<13} {cmd_msg}")
             print()
-        
+
         # Show top-level commands (commands with no menu or empty menu)
-        top_level_commands = [name for name, cmd in self.commands.items() 
+        top_level_commands = [name for name, cmd in self.commands.items()
                             if cmd['menu'] == '' and name == cmd['name']]  # Exclude aliases
         if top_level_commands:
             print("Available commands:")
@@ -533,7 +614,7 @@ class ArgParse:
                 aliases_str = f" (aliases: {', '.join(cmd['aliases'])})" if cmd['aliases'] else ""
                 print(f"  {cmd_name:<15} {msg}{aliases_str}")
             print()
-            
+
         print("Use 'help [menu|command]' or '[menu|command] --help' for more information")
         
     def print_menu_help(self, menu_name: str):

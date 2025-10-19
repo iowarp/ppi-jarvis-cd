@@ -276,13 +276,13 @@ class TestArgParseRemainderArguments(unittest.TestCase):
         self.assertEqual(self.parser.remainder, [])
 
     def test_undefined_args_without_remainder(self):
-        """Test that undefined arguments without keep_remainder are ignored"""
+        """Test that undefined arguments without keep_remainder raise an error"""
         args = ['test', 'strict', '--known_arg=value', '--unknown_arg=bad']
-        result = self.parser.parse(args)
 
-        # The undefined argument should be ignored (not cause error but not collected)
-        self.assertEqual(self.parser.kwargs['known_arg'], 'value')
-        self.assertEqual(self.parser.remainder, [])
+        # The command is marked as strict (keep_remainder=False), so undefined args should raise error
+        # This matches the command definition comment: "should reject undefined args"
+        with self.assertRaises(SystemExit):
+            self.parser.parse(args)
 
 
 class TestArgParseListArguments(unittest.TestCase):

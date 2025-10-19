@@ -826,6 +826,10 @@ class JarvisCLI(ArgParse):
 
         # Initialize Jarvis singleton
         Jarvis.initialize(jarvis_config, config_dir, private_dir, shared_dir)
+
+        # Save jarvis_config to self so subsequent commands use the same instance
+        self.jarvis_config = jarvis_config
+
         print(f"Jarvis initialized successfully!")
         print(f"Config dir: {config_dir}")
         print(f"Private dir: {private_dir}")

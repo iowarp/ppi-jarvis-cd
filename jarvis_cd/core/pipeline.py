@@ -87,31 +87,71 @@ class Pipeline:
     
     def save(self):
         """
-        Save pipeline configuration and environment to files.
+        Save pipeline configuration and environment to separate files.
+
+        Creates two YAML files:
+        - pipeline.yaml: Contains package/interceptor configuration in script format
+        - environment.yaml: Contains environment variables only
         """
         if not self.name:
             raise ValueError("Pipeline name not set")
-            
+
         pipeline_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.name)
         pipeline_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create pipeline configuration
+
+        # Create pipeline configuration in the SAME format as pipeline scripts
+        # This allows code reuse by using the same parsing logic
         pipeline_config = {
             'name': self.name,
-            'packages': self.packages,
-            'interceptors': self.interceptors,
-            'env': self.env,
-            'created_at': self.created_at,
-            'last_loaded_file': self.last_loaded_file
+            'pkgs': [],
+            'interceptors': []
         }
-        
-        # Save pipeline configuration
+
+        # Add metadata fields
+        if self.created_at:
+            pipeline_config['created_at'] = self.created_at
+        if self.last_loaded_file:
+            pipeline_config['last_loaded_file'] = self.last_loaded_file
+
+        # Convert packages to script format (pkg_type + config parameters)
+        for pkg in self.packages:
+            pkg_entry = {
+                'pkg_type': pkg['pkg_type']
+            }
+            # Add pkg_name if different from pkg_type
+            if pkg['pkg_id'] != pkg['pkg_name']:
+                pkg_entry['pkg_name'] = pkg['pkg_id']
+
+            # Add all config parameters except internal ones
+            config = pkg.get('config', {})
+            for key, value in config.items():
+                pkg_entry[key] = value
+
+            pipeline_config['pkgs'].append(pkg_entry)
+
+        # Convert interceptors to script format
+        for interceptor_id, interceptor_def in self.interceptors.items():
+            interceptor_entry = {
+                'pkg_type': interceptor_def['pkg_type']
+            }
+            # Add pkg_name if different from pkg_type
+            if interceptor_id != interceptor_def['pkg_name']:
+                interceptor_entry['pkg_name'] = interceptor_id
+
+            # Add all config parameters
+            config = interceptor_def.get('config', {})
+            for key, value in config.items():
+                interceptor_entry[key] = value
+
+            pipeline_config['interceptors'].append(interceptor_entry)
+
+        # Save pipeline configuration (same format as pipeline scripts)
         config_file = pipeline_dir / 'pipeline.yaml'
         with open(config_file, 'w') as f:
             yaml.dump(pipeline_config, f, default_flow_style=False)
-            
-        # Save environment file
-        env_file = pipeline_dir / 'env.yaml'
+
+        # Save environment to separate file
+        env_file = pipeline_dir / 'environment.yaml'
         with open(env_file, 'w') as f:
             yaml.dump(self.env, f, default_flow_style=False)
     
@@ -570,30 +610,55 @@ class Pipeline:
             print(f"Error showing paths for package {pkg_id}: {e}")
     
     def _load_from_config(self):
-        """Load pipeline from its configuration files"""
+        """
+        Load pipeline from its configuration files.
+
+        Loads from two separate files:
+        - pipeline.yaml: Contains package/interceptor configuration in script format
+        - environment.yaml: Contains environment variables only
+        """
         pipeline_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.name)
         config_file = pipeline_dir / 'pipeline.yaml'
-        
+
         if not config_file.exists():
             raise FileNotFoundError(f"Pipeline configuration not found: {config_file}")
-        
-        # Load pipeline configuration
+
+        # Load pipeline configuration (in script format)
         with open(config_file, 'r') as f:
             pipeline_config = yaml.safe_load(f)
-        
-        self.packages = pipeline_config.get('packages', [])
-        self.interceptors = pipeline_config.get('interceptors', {})
-        self.env = pipeline_config.get('env', {})
+
+        # Extract metadata
         self.created_at = pipeline_config.get('created_at')
         self.last_loaded_file = pipeline_config.get('last_loaded_file')
-        
-        # Load additional environment from env.yaml
-        env_file = pipeline_dir / 'env.yaml'
+
+        # Initialize packages and interceptors
+        self.packages = []
+        self.interceptors = {}
+
+        # Process interceptors from script format
+        interceptors_list = pipeline_config.get('interceptors', [])
+        for interceptor_def in interceptors_list:
+            interceptor_id = interceptor_def.get('pkg_name', interceptor_def['pkg_type'].split('.')[-1])
+            interceptor_entry = self._process_package_definition(interceptor_def, interceptor_id)
+            self.interceptors[interceptor_id] = interceptor_entry
+
+        # Process packages from script format
+        for pkg_def in pipeline_config.get('pkgs', []):
+            pkg_id = pkg_def.get('pkg_name', pkg_def['pkg_type'].split('.')[-1])
+            package_entry = self._process_package_definition(pkg_def, pkg_id)
+            self.packages.append(package_entry)
+
+        # Load environment from separate file
+        env_file = pipeline_dir / 'environment.yaml'
         if env_file.exists():
             with open(env_file, 'r') as f:
                 env_config = yaml.safe_load(f)
                 if env_config:
-                    self.env.update(env_config)
+                    self.env = env_config
+                else:
+                    self.env = {}
+        else:
+            self.env = {}
     
     def _load_from_file(self, load_type: str, pipeline_file: str):
         """Load pipeline from a file"""
@@ -779,23 +844,14 @@ class Pipeline:
         pkg_instance.pkg_id = pkg_def['pkg_id']
         pkg_instance.global_id = pkg_def['global_id']
 
+        # Initialize directories now that pkg_id is set
+        pkg_instance._ensure_directories()
+
         # Set configuration
         base_config = pkg_def.get('config', {})
         base_config.setdefault('do_dbg', False)
         base_config.setdefault('dbg_port', 50000)
         pkg_instance.config = base_config
-
-        # Ensure package directories are set (will use pipeline context)
-        try:
-            pkg_instance._ensure_directories()
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            raise ValueError(
-                f"Failed to ensure directories for package '{pkg_type}':\n"
-                f"  Error: {e}\n"
-                f"  Traceback:\n{error_details}"
-            )
             
         # Set up environment variables - mod_env is exact replica of env plus LD_PRELOAD
         if pipeline_env is None:

@@ -178,15 +178,49 @@ class EnvironmentManager:
     def list_named_environments(self) -> List[str]:
         """
         List all available named environments.
-        
+
         :return: List of environment names
         """
         env_dir = self.jarvis_config.jarvis_root / 'env'
         if not env_dir.exists():
             return []
-            
+
         env_files = list(env_dir.glob('*.yaml'))
         return [f.stem for f in env_files]
+
+    @staticmethod
+    def show_environment(env_file_path: Path, context_name: str):
+        """
+        Display environment variables from a YAML file.
+
+        This is a unified function used by both pipeline and named environment display.
+
+        :param env_file_path: Path to the environment YAML file
+        :param context_name: Name to display in the output (e.g., pipeline name or environment name)
+        """
+        if not env_file_path.exists():
+            print(f"No environment configured for '{context_name}'")
+            return
+
+        with open(env_file_path, 'r') as f:
+            env_vars = yaml.safe_load(f) or {}
+
+        print(f"Environment for '{context_name}':")
+        print(f"Total variables: {len(env_vars)}")
+        print()
+
+        if env_vars:
+            # Sort by variable name for consistent display
+            for var_name in sorted(env_vars.keys()):
+                value = env_vars[var_name]
+                # Truncate very long values for readability
+                if isinstance(value, str) and len(value) > 100:
+                    display_value = value[:97] + "..."
+                else:
+                    display_value = value
+                print(f"  {var_name}: {display_value}")
+        else:
+            print("  No environment variables set")
         
     def show_pipeline_environment(self):
         """
@@ -196,47 +230,27 @@ class EnvironmentManager:
         if not current_pipeline_dir:
             print("No current pipeline set")
             return
-            
-        env_file = current_pipeline_dir / 'env.yaml'
-        if not env_file.exists():
-            print("No environment configured for current pipeline")
-            return
-            
-        with open(env_file, 'r') as f:
-            env_vars = yaml.safe_load(f) or {}
-            
-        # Get current pipeline name
+
+        # Get current pipeline name for display context
         config_file = current_pipeline_dir / 'pipeline.yaml'
         with open(config_file, 'r') as f:
             pipeline_config = yaml.safe_load(f)
             pipeline_name = pipeline_config['name']
-            
-        print(f"Environment for pipeline '{pipeline_name}':")
-        print(f"Total variables: {len(env_vars)}")
-        print()
-        
-        if env_vars:
-            # Sort by variable name for consistent display
-            for var_name in sorted(env_vars.keys()):
-                value = env_vars[var_name]
-                # Truncate very long values for readability
-                if isinstance(value, str) and len(value) > 100:
-                    display_value = value[:97] + "..."
-                else:
-                    display_value = value
-                print(f"  {var_name}: {display_value}")
-        else:
-            print("  No environment variables set")
+
+        # Use unified function to display environment
+        env_file = current_pipeline_dir / 'env.yaml'
+        self.show_environment(env_file, f"pipeline '{pipeline_name}'")
             
     def show_named_environment(self, env_name: str):
         """
         Show the variables in a named environment.
-        
+
         :param env_name: Name of the environment to show
         """
         env_dir = self.jarvis_config.jarvis_root / 'env'
         env_file = env_dir / f'{env_name}.yaml'
-        
+
+        # Check if environment exists and provide helpful error message
         if not env_file.exists():
             available_envs = self.list_named_environments()
             if available_envs:
@@ -245,26 +259,9 @@ class EnvironmentManager:
             else:
                 print("No named environments found")
             return
-            
-        with open(env_file, 'r') as f:
-            env_vars = yaml.safe_load(f) or {}
-            
-        print(f"Named environment '{env_name}':")
-        print(f"Total variables: {len(env_vars)}")
-        print()
-        
-        if env_vars:
-            # Sort by variable name for consistent display
-            for var_name in sorted(env_vars.keys()):
-                value = env_vars[var_name]
-                # Truncate very long values for readability
-                if isinstance(value, str) and len(value) > 100:
-                    display_value = value[:97] + "..."
-                else:
-                    display_value = value
-                print(f"  {var_name}: {display_value}")
-        else:
-            print("  No environment variables set")
+
+        # Use unified function to display environment
+        self.show_environment(env_file, f"named environment '{env_name}'")
             
     def load_named_environment(self, env_name: str) -> Dict[str, str]:
         """

@@ -22,14 +22,15 @@ class Pkg:
     def load_standalone(cls, package_spec: str):
         """
         Load a package instance for standalone operations (not in a pipeline context).
-        
+        Creates a minimal standalone pipeline context for the package.
+
         :param package_spec: Package specification (repo.pkg or just pkg)
         :return: Package instance
         """
         from jarvis_cd.core.config import load_class, Jarvis
-        
+
         jarvis = Jarvis.get_instance()
-        
+
         # Parse package specification
         if '.' in package_spec:
             # Full specification like "builtin.ior"
@@ -44,10 +45,10 @@ class Pkg:
             import_parts = full_spec.split('.')
             repo_name = import_parts[0]
             pkg_name = import_parts[1]
-            
+
         # Determine class name (convert snake_case to PascalCase)
         class_name = ''.join(word.capitalize() for word in pkg_name.split('_'))
-        
+
         # Load class
         if repo_name == 'builtin':
             repo_path = str(jarvis.jarvis_config.get_builtin_repo_path())
@@ -58,33 +59,43 @@ class Pkg:
                 if Path(registered_repo).name == repo_name:
                     repo_path = registered_repo
                     break
-                    
+
             if not repo_path:
                 raise ValueError(f"Repository not found: {repo_name}")
-                
+
         import_str = f"{repo_name}.{pkg_name}.pkg"
         try:
             pkg_class = load_class(import_str, repo_path, class_name)
         except Exception as e:
             raise ValueError(f"Failed to load package '{package_spec}': Error loading class {class_name} from {import_str}: {e}")
-        
+
         if not pkg_class:
             raise ValueError(f"Package class not found: {class_name} in {import_str}")
-            
-        # Create instance
-        pkg_instance = pkg_class()
-        
+
+        # Create a minimal standalone pipeline object
+        class StandalonePipeline:
+            def __init__(self):
+                self.name = "standalone"
+
+        standalone_pipeline = StandalonePipeline()
+
+        # Create instance with standalone pipeline
+        pkg_instance = pkg_class(pipeline=standalone_pipeline)
+
         # Set basic attributes for standalone use
         pkg_instance.pkg_id = pkg_name
         pkg_instance.global_id = f"standalone.{pkg_name}"
-        
+
+        # Initialize directories now that pkg_id is set
+        pkg_instance._ensure_directories()
+
         return pkg_instance
     
-    def __init__(self, pipeline=None):
+    def __init__(self, pipeline):
         """
         Initialize package with default values.
-        
-        :param pipeline: Parent pipeline instance (optional for standalone packages)
+
+        :param pipeline: Parent pipeline instance (REQUIRED)
         """
         self.jarvis = Jarvis.get_instance()
         self.pipeline = pipeline
@@ -97,10 +108,13 @@ class Pkg:
         self.config = {'interceptors': {}}
         self.global_id = None
         self.pkg_id = None
-        
+
+        # Note: Directories will be initialized by Pipeline._load_package_instance
+        # after pkg_id is set, or by user code for standalone packages
+
         # Call user-defined initialization
         self._init()
-        
+
         # Set pkg_dir to the directory containing this package's source
         self._detect_pkg_dir()
         
@@ -231,55 +245,33 @@ class Pkg:
         
     def _ensure_directories(self):
         """
-        Ensure package directories are set. Use pkg_id if available, otherwise use class name.
-        Gets directory paths from the parent pipeline if available, otherwise uses global directories.
+        Ensure package directories are set based on pipeline context.
+        This method is called during __init__ so directories are always available.
 
         Directory structure:
-        - config_dir/pipelines/pipeline_name/packages/pkg_id (or config_dir/packages/pkg_id for standalone)
-        - shared_dir/pipeline_name/pkg_id (or shared_dir/pkg_id for standalone)
-        - private_dir/pipeline_name/pkg_id (or private_dir/pkg_id for standalone)
+        - config_dir: pipelines/pipeline_name/packages/pkg_id
+        - shared_dir: pipeline_name/pkg_id
+        - private_dir: pipeline_name/pkg_id
         """
         if not self.config_dir or not self.shared_dir or not self.private_dir:
-            try:
-                pkg_id = getattr(self, 'pkg_id', None) or self.__class__.__name__.lower()
+            pkg_id = getattr(self, 'pkg_id', None) or self.__class__.__name__.lower()
 
-                if self.pipeline and hasattr(self.pipeline, 'name'):
-                    # Pipeline package - use separate root directories
-                    pipeline_config_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.pipeline.name)
-                    pipeline_shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.pipeline.name)
-                    pipeline_private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(self.pipeline.name)
+            # Get directories from pipeline
+            pipeline_config_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.pipeline.name)
+            pipeline_shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.pipeline.name)
+            pipeline_private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(self.pipeline.name)
 
-                    if not self.config_dir:
-                        self.config_dir = str(pipeline_config_dir / 'packages' / pkg_id)
-                    if not self.shared_dir:
-                        self.shared_dir = str(pipeline_shared_dir / pkg_id)
-                    if not self.private_dir:
-                        self.private_dir = str(pipeline_private_dir / pkg_id)
-                else:
-                    # Standalone package - use global directories with pkg_id
-                    if not self.config_dir:
-                        self.config_dir = str(Path(self.jarvis.config_dir) / 'packages' / pkg_id)
-                    if not self.shared_dir:
-                        self.shared_dir = str(Path(self.jarvis.shared_dir) / pkg_id)
-                    if not self.private_dir:
-                        self.private_dir = str(Path(self.jarvis.private_dir) / pkg_id)
+            if not self.config_dir:
+                self.config_dir = str(pipeline_config_dir / 'packages' / pkg_id)
+            if not self.shared_dir:
+                self.shared_dir = str(pipeline_shared_dir / pkg_id)
+            if not self.private_dir:
+                self.private_dir = str(pipeline_private_dir / pkg_id)
 
-                # Create directories if they don't exist
-                for dir_path in [self.config_dir, self.shared_dir, self.private_dir]:
-                    if dir_path:
-                        Path(dir_path).mkdir(parents=True, exist_ok=True)
-
-            except Exception as e:
-                self.log(f"Warning: Could not set package directories: {e}")
-                # Set fallback directories
-                import tempfile
-                temp_dir = tempfile.mkdtemp(prefix=f'jarvis_{self.__class__.__name__.lower()}_')
-                if not self.config_dir:
-                    self.config_dir = temp_dir
-                if not self.shared_dir:
-                    self.shared_dir = temp_dir
-                if not self.private_dir:
-                    self.private_dir = temp_dir
+            # Create directories if they don't exist
+            for dir_path in [self.config_dir, self.shared_dir, self.private_dir]:
+                if dir_path:
+                    Path(dir_path).mkdir(parents=True, exist_ok=True)
                     
     def _detect_pkg_dir(self):
         """
@@ -560,79 +552,6 @@ class Pkg:
             self.log(f"Error copying template file {source_path} -> {dest_path}: {e}")
             raise
             
-    def save(self):
-        """
-        Save package state including configuration and environment variables.
-        Saves to config_dir with config.yaml, env.yaml, and mod_env.yaml files.
-        """
-        try:
-            # Ensure package config directory exists
-            if self.config_dir:
-                Path(self.config_dir).mkdir(parents=True, exist_ok=True)
-                
-                # Save configuration
-                config_path = Path(self.config_dir) / 'config.yaml'
-                with open(config_path, 'w') as f:
-                    yaml.dump(self.config, f, default_flow_style=False)
-                self.log(f"Saved configuration to {config_path}")
-                
-                # Save environment variables (env should not contain LD_PRELOAD)
-                env_path = Path(self.config_dir) / 'env.yaml'
-                with open(env_path, 'w') as f:
-                    yaml.dump(self.env, f, default_flow_style=False)
-                self.log(f"Saved environment to {env_path}")
-                
-                # Save mod_env (exact replica of env + LD_PRELOAD)
-                mod_env_path = Path(self.config_dir) / 'mod_env.yaml'
-                with open(mod_env_path, 'w') as f:
-                    yaml.dump(self.mod_env, f, default_flow_style=False)
-                self.log(f"Saved mod_env to {mod_env_path}")
-                
-            else:
-                self.log("Warning: No config_dir set, cannot save package state")
-                
-        except Exception as e:
-            self.log(f"Error saving package state: {e}")
-            
-    def load(self):
-        """
-        Load package state from saved files in config_dir.
-        Loads config.yaml, env.yaml, and mod_env.yaml if they exist.
-        """
-        try:
-            if not self.config_dir or not Path(self.config_dir).exists():
-                self.log("No saved package state found")
-                return
-                
-            # Load configuration
-            config_path = Path(self.config_dir) / 'config.yaml'
-            if config_path.exists():
-                with open(config_path, 'r') as f:
-                    saved_config = yaml.safe_load(f)
-                    if saved_config:
-                        self.config.update(saved_config)
-                        self.log(f"Loaded configuration from {config_path}")
-                        
-            # Load environment variables
-            env_path = Path(self.config_dir) / 'env.yaml'
-            if env_path.exists():
-                with open(env_path, 'r') as f:
-                    saved_env = yaml.safe_load(f)
-                    if saved_env:
-                        self.env.update(saved_env)
-                        self.log(f"Loaded environment from {env_path}")
-                        
-            # Load mod_env
-            mod_env_path = Path(self.config_dir) / 'mod_env.yaml'
-            if mod_env_path.exists():
-                with open(mod_env_path, 'r') as f:
-                    saved_mod_env = yaml.safe_load(f)
-                    if saved_mod_env:
-                        self.mod_env.update(saved_mod_env)
-                        self.log(f"Loaded mod_env from {mod_env_path}")
-                        
-        except Exception as e:
-            self.log(f"Error loading package state: {e}")
         
     
     def show_readme(self):
@@ -714,8 +633,8 @@ class Service(Pkg):
     Base class for long-running services.
     Services typically need to be manually stopped.
     """
-    
-    def __init__(self, pipeline=None):
+
+    def __init__(self, pipeline):
         super().__init__(pipeline=pipeline)
         
     def _init(self):
@@ -731,8 +650,8 @@ class Application(Pkg):
     Base class for applications that run and complete automatically.
     Applications typically don't need manual stopping.
     """
-    
-    def __init__(self, pipeline=None):
+
+    def __init__(self, pipeline):
         super().__init__(pipeline=pipeline)
         
     def _init(self):
@@ -748,8 +667,8 @@ class Interceptor(Pkg):
     Base class for interceptors that modify environment variables.
     Interceptors route system and library calls to new functions.
     """
-    
-    def __init__(self, pipeline=None):
+
+    def __init__(self, pipeline):
         super().__init__(pipeline=pipeline)
         
     def _init(self):

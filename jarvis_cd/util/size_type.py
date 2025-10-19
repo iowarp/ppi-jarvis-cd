@@ -100,8 +100,8 @@ class SizeType:
         return float(self._bytes)
     
     def __str__(self) -> str:
-        """String representation with human-readable format."""
-        return self.to_human_readable()
+        """String representation shows bytes value."""
+        return f"{self._bytes}B"
     
     def __repr__(self) -> str:
         """Developer representation."""

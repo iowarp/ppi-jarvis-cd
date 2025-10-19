@@ -53,6 +53,11 @@ class PkgArgParse(ArgParse):
         if configure_menu:
             self.add_args(configure_menu)
 
+    @property
+    def cmds(self):
+        """Alias for commands attribute for backward compatibility"""
+        return self.commands
+
     def print_help(self, cmd_name: str = None):
         """
         Print help for the package configuration.

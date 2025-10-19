@@ -20,16 +20,19 @@ class TestPipelineIndexManager(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
         self.test_dir = tempfile.mkdtemp(prefix='jarvis_test_ppl_index_')
+        self.jarvis_root = os.path.join(self.test_dir, '.ppi-jarvis')
         self.config_dir = os.path.join(self.test_dir, 'config')
         self.private_dir = os.path.join(self.test_dir, 'private')
         self.shared_dir = os.path.join(self.test_dir, 'shared')
 
+        os.makedirs(self.jarvis_root, exist_ok=True)
         os.makedirs(self.config_dir, exist_ok=True)
         os.makedirs(self.private_dir, exist_ok=True)
         os.makedirs(self.shared_dir, exist_ok=True)
 
         # Create mock config
-        self.config = JarvisConfig(self.config_dir, self.private_dir, self.shared_dir)
+        self.config = JarvisConfig(self.jarvis_root)
+        self.config.initialize(self.config_dir, self.private_dir, self.shared_dir)
         self.manager = PipelineIndexManager(self.config)
 
     def tearDown(self):
