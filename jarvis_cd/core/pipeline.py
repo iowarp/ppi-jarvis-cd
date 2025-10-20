@@ -851,6 +851,7 @@ class Pipeline:
             )
 
         # Set basic attributes
+        pkg_instance.pkg_type = pkg_def['pkg_type']
         pkg_instance.pkg_id = pkg_def['pkg_id']
         pkg_instance.global_id = pkg_def['global_id']
 

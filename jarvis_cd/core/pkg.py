@@ -106,6 +106,7 @@ class Pkg:
         self.env = {}                # Base environment (everything except LD_PRELOAD)
         self.mod_env = {}           # Modified environment (exact replica of env + LD_PRELOAD)
         self.config = {'interceptors': {}}
+        self.pkg_type = None
         self.global_id = None
         self.pkg_id = None
 
@@ -303,6 +304,7 @@ class Pkg:
         Pkg.__init__(delegate, pipeline=self.pipeline)
 
         # Copy our state to the delegate
+        delegate.pkg_type = self.pkg_type
         delegate.pkg_id = self.pkg_id
         delegate.global_id = self.global_id
         delegate.config = self.config

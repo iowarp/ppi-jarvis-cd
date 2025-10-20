@@ -142,7 +142,7 @@ class Ior(Application):
                 'name': 'log',
                 'msg': 'Path to IOR output log',
                 'type': str,
-                'default': None,
+                'default': '',
             },
             {
                 'name': 'direct',
