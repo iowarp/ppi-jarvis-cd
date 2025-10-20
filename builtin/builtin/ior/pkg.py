@@ -149,6 +149,12 @@ class Ior(Application):
                 'msg': 'Use direct I/O (O_DIRECT) for POSIX API, bypassing I/O buffers',
                 'type': bool,
                 'default': False,
+            },
+            {
+                'name': 'deploy_ssh_port',
+                'msg': 'SSH port for containerized deployment (must not conflict with host SSH)',
+                'type': int,
+                'default': 2222,
             }
         ]
 

@@ -91,17 +91,24 @@ class IorContainer(Application):
         """
         Generate Dockerfile for IOR container.
         """
-        dockerfile_content = """FROM iowarp/iowarp-deps:ai
+        ssh_port = self.config.get('deploy_ssh_port', 22)
+
+        # sshd always listens on the configured port inside the container
+        # - For host network: sshd listens directly on this port
+        # - For port mapping: sshd listens on this port, gets mapped to host
+        sshd_port = ssh_port
+
+        dockerfile_content = f"""FROM iowarp/iowarp-deps:ai
 
 # Disable prompt during packages installation.
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install ior.
-RUN . "${SPACK_DIR}/share/spack/setup-env.sh" && \\
+RUN . "${{SPACK_DIR}}/share/spack/setup-env.sh" && \\
     spack install -y ior
 
 # Copy required spack executables and libraries to /usr
-RUN . "${SPACK_DIR}/share/spack/setup-env.sh" && \\
+RUN . "${{SPACK_DIR}}/share/spack/setup-env.sh" && \\
     spack load iowarp && \\
     cp -r $(spack location -i python)/bin/* /usr/bin || true && \\
     cp -r $(spack location -i py-pip)/bin/* /usr/bin || true && \\
@@ -113,12 +120,15 @@ RUN . "${SPACK_DIR}/share/spack/setup-env.sh" && \\
     cp -r $(spack location -i iowarp-runtime)/bin/* /usr/bin || true && \\
     cp -r $(spack location -i iowarp-cte)/bin/* /usr/bin || true && \\
     cp -r $(spack location -i cte-hermes-shm)/bin/* /usr/bin || true && \\
-    for pkg in $(spack find --format '{name}' | grep '^py-'); do \\
+    for pkg in $(spack find --format '{{name}}' | grep '^py-'); do \\
         cp -r $(spack location -i $pkg)/lib/* $PYTHON_PREFIX/lib/ 2>/dev/null || true; \\
         cp -r $(spack location -i $pkg)/bin/* /usr/bin 2>/dev/null || true; \\
     done && \\
     sed -i '1s|.*|#!/usr/bin/python3|' /usr/bin/jarvis && \\
     echo "Spack packages copied to /usr directory"
+
+# Configure SSH daemon to listen on port {sshd_port}
+RUN sed -i 's/^#*Port .*/Port {sshd_port}/' /etc/ssh/sshd_config
 
 # Copy pipeline file from shared directory into container
 COPY pkg.yaml /pkg.yaml
@@ -138,24 +148,34 @@ RUN jarvis ppl load yaml /pkg.yaml
         Generate docker/podman compose file.
         """
         container_name = f"{self.pipeline.name}_{self.pkg_id}"
+        ssh_port = self.config.get('deploy_ssh_port', 22)
 
         # Mount host directories to Jarvis default paths in container
         # Private: ~/.ppi-jarvis/private -> /root/.ppi-jarvis/private
         # Shared: ~/.ppi-jarvis/shared -> /root/.ppi-jarvis/shared
+        # SSH keys: ~/.ssh -> /root/.ssh (for passwordless SSH between nodes)
+        import os
+        ssh_dir = os.path.expanduser('~/.ssh')
+
         compose_config = {
             'services': {
                 'ior': {
                     'build': str(self.shared_dir),
                     'container_name': container_name,
                     'entrypoint': ['/bin/bash', '-c'],
-                    'command': ['tail -f /dev/null'],
+                    'command': [f'cp -r /root/.ssh_host /root/.ssh && chmod 700 /root/.ssh && chmod 600 /root/.ssh/* 2>/dev/null || true && cat /root/.ssh/*.pub > /root/.ssh/authorized_keys 2>/dev/null && chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true && echo "Host *" > /root/.ssh/config && echo "    Port {ssh_port}" >> /root/.ssh/config && echo "    StrictHostKeyChecking no" >> /root/.ssh/config && chmod 600 /root/.ssh/config && /usr/sbin/sshd && tail -f /dev/null'],
                     'volumes': [
                         f"{self.private_dir}:/root/.ppi-jarvis/private",
-                        f"{self.shared_dir}:/root/.ppi-jarvis/shared"
+                        f"{self.shared_dir}:/root/.ppi-jarvis/shared",
+                        f"{ssh_dir}:/root/.ssh_host:ro"  # Mount SSH keys to temp location
                     ]
                 }
             }
         }
+
+        # Always use host network mode for multi-node MPI support
+        # SSH client is configured to use the custom port via ~/.ssh/config
+        compose_config['services']['ior']['network_mode'] = 'host'
 
         # Add IPC configuration if pipeline has shm_container
         if self.pipeline.shm_container:

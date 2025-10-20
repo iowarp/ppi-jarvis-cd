@@ -28,6 +28,7 @@ class LocalMpiExec(LocalExec):
         self.ppn = exec_info.ppn
         self.hostfile = exec_info.hostfile or Hostfile(['localhost'])
         self.mpi_env = exec_info.env
+        self.ssh_port = exec_info.port if exec_info.port else None
 
         # Process command format
         if isinstance(cmd, str):
@@ -104,6 +105,10 @@ class OpenMpiExec(LocalMpiExec):
         params.append('--oversubscribe')
         params.append('--allow-run-as-root')  # For docker
 
+        # Set SSH port if explicitly specified (SSH config will be used otherwise)
+        if self.ssh_port and self.ssh_port != 22:
+            params.append(f'--mca plm_rsh_args "-p {self.ssh_port}"')
+
         if self.ppn is not None:
             params.append(f'-npernode {self.ppn}')
 
@@ -150,6 +155,10 @@ class MpichExec(LocalMpiExec):
     def mpicmd(self) -> str:
         """Build MPICH command"""
         params = ['mpiexec']
+
+        # Set SSH port if explicitly specified (SSH config will be used otherwise)
+        if self.ssh_port and self.ssh_port != 22:
+            params.append(f'-bootstrap-exec-args "-p {self.ssh_port}"')
 
         if self.ppn is not None:
             params.append(f'-ppn {self.ppn}')
