@@ -13,9 +13,9 @@ pkgs:
   - pkg_type: builtin.ior
     pkg_name: ior_container
     # Container deployment mode (use 'docker' or 'podman')
-    deploy: podman
+    deploy: docker
     # IOR benchmark parameters
-    nprocs: 4
+    nprocs: 2
     ppn: 2
     block: 1G
     xfer: 1M

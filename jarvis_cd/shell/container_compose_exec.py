@@ -30,7 +30,12 @@ class PodmanBuildExec(CoreExec):
 
     def get_cmd(self) -> str:
         """Get the podman compose build command string"""
-        return f"podman-compose -f {self.compose_file} build"
+        import shutil
+        # Use podman-compose if available, otherwise use podman compose
+        if shutil.which('podman-compose'):
+            return f"podman-compose -f {self.compose_file} build"
+        else:
+            return f"podman compose -f {self.compose_file} build"
 
     def run(self):
         """Execute the podman compose build command"""
@@ -109,7 +114,7 @@ class ContainerBuildExec(CoreExec):
         import shutil
 
         has_docker = shutil.which('docker') is not None
-        has_podman = shutil.which('podman-compose') is not None
+        has_podman = shutil.which('podman') is not None or shutil.which('podman-compose') is not None
 
         if self.prefer_podman and has_podman:
             self.delegate = PodmanBuildExec(self.compose_file, self.exec_info)
@@ -118,7 +123,7 @@ class ContainerBuildExec(CoreExec):
         elif has_podman:
             self.delegate = PodmanBuildExec(self.compose_file, self.exec_info)
         else:
-            raise RuntimeError("Neither docker nor podman-compose found in PATH")
+            raise RuntimeError("Neither docker nor podman found in PATH")
 
     def get_cmd(self) -> str:
         """Get the command string from delegate"""
@@ -160,7 +165,12 @@ class PodmanComposeExec(CoreExec):
 
     def get_cmd(self) -> str:
         """Get the podman compose command string"""
-        cmd = f"podman-compose -f {self.compose_file} {self.action}"
+        import shutil
+        # Use podman-compose if available, otherwise use podman compose
+        if shutil.which('podman-compose'):
+            cmd = f"podman-compose -f {self.compose_file} {self.action}"
+        else:
+            cmd = f"podman compose -f {self.compose_file} {self.action}"
         if self.action == 'up':
             cmd += " -d"
         return cmd
@@ -251,7 +261,7 @@ class ContainerComposeExec(CoreExec):
         import shutil
 
         has_docker = shutil.which('docker') is not None
-        has_podman = shutil.which('podman-compose') is not None
+        has_podman = shutil.which('podman') is not None or shutil.which('podman-compose') is not None
 
         if self.prefer_podman and has_podman:
             self.delegate = PodmanComposeExec(self.compose_file, self.exec_info, self.action)
@@ -260,7 +270,7 @@ class ContainerComposeExec(CoreExec):
         elif has_podman:
             self.delegate = PodmanComposeExec(self.compose_file, self.exec_info, self.action)
         else:
-            raise RuntimeError("Neither docker nor podman-compose found in PATH")
+            raise RuntimeError("Neither docker nor podman found in PATH")
 
     def get_cmd(self) -> str:
         """Get the command string from delegate"""
