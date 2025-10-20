@@ -225,24 +225,96 @@ class Pkg:
     def configure(self, **kwargs):
         """
         Public configuration method that calls internal _configure.
-        
+
         :param kwargs: Configuration parameters
         :return: Configuration dictionary
         """
         # Ensure package directories are set
         self._ensure_directories()
-        
+
         # Apply menu defaults first
         self._apply_menu_defaults()
-        
+
         # Update configuration with provided parameters
         self.update_config(kwargs, rebuild=False)
-        
+
         # Call the internal configuration method
         self._configure(**kwargs)
-        
+
         return self.config.copy()
-        
+
+    def _get_delegate(self, deploy_mode: str):
+        """
+        Get or create the delegate implementation based on deploy mode.
+
+        This method provides a unified delegation pattern for packages that have
+        multiple implementations (e.g., default vs containerized).
+
+        The method attempts to import a module relative to the package and instantiate
+        a class named {BaseClassName}{DeployMode}. For example:
+        - Ior class with deploy_mode='container' -> from .container import IorContainer
+        - Ior class with deploy_mode='default' -> from .default import IorDefault
+
+        :param deploy_mode: Deployment mode (e.g., 'default', 'container', 'docker')
+        :return: Delegate instance
+        """
+        # Check if we already have a delegate for this mode
+        delegate_key = f'_delegate_{deploy_mode}'
+        if hasattr(self, delegate_key) and getattr(self, delegate_key) is not None:
+            return getattr(self, delegate_key)
+
+        # Get base class name (e.g., 'Ior' from 'Ior' class)
+        base_class_name = self.__class__.__name__
+
+        # Build delegate class name: {BaseClassName}{DeployModeCapitalized}
+        # e.g., 'Ior' + 'Container' = 'IorContainer'
+        deploy_mode_capitalized = ''.join(word.capitalize() for word in deploy_mode.split('_'))
+        delegate_class_name = f"{base_class_name}{deploy_mode_capitalized}"
+
+        # Import the module dynamically relative to current package
+        # e.g., if we're in builtin.ior.pkg, import builtin.ior.{deploy_mode}
+        import importlib
+        current_module = self.__class__.__module__  # e.g., 'builtin.ior.pkg'
+        package_path = current_module.rsplit('.', 1)[0]  # e.g., 'builtin.ior'
+        module_path = f"{package_path}.{deploy_mode}"
+
+        try:
+            module = importlib.import_module(module_path)
+        except ImportError as e:
+            raise ImportError(
+                f"Failed to import deployment module '{module_path}' for deploy mode '{deploy_mode}'. "
+                f"Expected file: {deploy_mode}.py in the same directory as {self.__class__.__name__}. "
+                f"Error: {e}"
+            )
+
+        # Get the delegate class from the module
+        try:
+            delegate_class = getattr(module, delegate_class_name)
+        except AttributeError:
+            raise AttributeError(
+                f"Module '{module_path}' does not contain class '{delegate_class_name}'. "
+                f"Expected class name: {delegate_class_name}"
+            )
+
+        # Create delegate instance
+        delegate = delegate_class.__new__(delegate_class)
+
+        # Initialize the delegate with base class
+        Pkg.__init__(delegate, pipeline=self.pipeline)
+
+        # Copy our state to the delegate
+        delegate.pkg_id = self.pkg_id
+        delegate.global_id = self.global_id
+        delegate.config = self.config
+        delegate.env = self.env
+        delegate.mod_env = self.mod_env
+        delegate._ensure_directories()
+
+        # Cache the delegate
+        setattr(self, delegate_key, delegate)
+
+        return delegate
+
     def _ensure_directories(self):
         """
         Ensure package directories are set based on pipeline context.

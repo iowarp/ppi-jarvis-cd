@@ -21,7 +21,7 @@ class Pipeline:
     def __init__(self, name: str = None):
         """
         Initialize pipeline instance.
-        
+
         :param name: Pipeline name (optional for new pipelines)
         """
         self.jarvis = Jarvis.get_instance()
@@ -31,6 +31,8 @@ class Pipeline:
         self.env = {}
         self.created_at = None
         self.last_loaded_file = None
+        self.shm_container = None  # Container for shared memory IPC
+        self.shm_size = "8g"  # Default shared memory size
         
         # Load existing pipeline if name is provided
         if name:
@@ -112,6 +114,10 @@ class Pipeline:
             pipeline_config['created_at'] = self.created_at
         if self.last_loaded_file:
             pipeline_config['last_loaded_file'] = self.last_loaded_file
+        if self.shm_container:
+            pipeline_config['shm_container'] = self.shm_container
+        if self.shm_size:
+            pipeline_config['shm_size'] = self.shm_size
 
         # Convert packages to script format (pkg_type + config parameters)
         for pkg in self.packages:
@@ -630,6 +636,8 @@ class Pipeline:
         # Extract metadata
         self.created_at = pipeline_config.get('created_at')
         self.last_loaded_file = pipeline_config.get('last_loaded_file')
+        self.shm_container = pipeline_config.get('shm_container')
+        self.shm_size = pipeline_config.get('shm_size', '8g')
 
         # Initialize packages and interceptors
         self.packages = []
@@ -737,6 +745,8 @@ class Pipeline:
         self.last_loaded_file = str(pipeline_file.absolute())
         self.packages = []
         self.interceptors = {}  # Store pipeline-level interceptors by name
+        self.shm_container = pipeline_def.get('shm_container')
+        self.shm_size = pipeline_def.get('shm_size', '8g')
         
         # Process interceptors
         interceptors_list = pipeline_def.get('interceptors', [])

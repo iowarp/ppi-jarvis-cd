@@ -38,42 +38,56 @@ result = Exec("echo hello", exec_info)
 
 # Core classes
 from .exec_info import (
-    ExecType, ExecInfo, LocalExecInfo, SshExecInfo, PsshExecInfo, 
+    ExecType, ExecInfo, LocalExecInfo, SshExecInfo, PsshExecInfo,
     MpiExecInfo, ScpExecInfo, PscpExecInfo
 )
 from ..util.hostfile import Hostfile
 from .core_exec import CoreExec, LocalExec, MpiVersion
 from .ssh_exec import SshExec, PsshExec
 from .mpi_exec import (
-    LocalMpiExec, OpenMpiExec, MpichExec, IntelMpiExec, 
+    LocalMpiExec, OpenMpiExec, MpichExec, IntelMpiExec,
     CrayMpichExec, MpiExec
 )
 from .scp_exec import ScpExec, PscpExec
 from .exec_factory import Exec
 from .process import Kill, KillAll, Which, Mkdir, Rm, Chmod, Sleep, Echo
 from .resource_graph_exec import ResourceGraphExec
+from .container_compose_exec import (
+    PodmanComposeExec, DockerComposeExec, ContainerComposeExec,
+    PodmanBuildExec, DockerBuildExec, ContainerBuildExec
+)
+from .container_exec import (
+    PodmanContainerExec, DockerContainerExec, ContainerExec
+)
 
 __all__ = [
     # Enums and Info classes
     'ExecType', 'ExecInfo', 'LocalExecInfo', 'SshExecInfo', 'PsshExecInfo',
     'MpiExecInfo', 'ScpExecInfo', 'PscpExecInfo',
-    
+
     # Core execution
     'Hostfile', 'CoreExec', 'LocalExec', 'MpiVersion',
-    
+
     # SSH execution
     'SshExec', 'PsshExec',
-    
+
     # MPI execution
     'LocalMpiExec', 'OpenMpiExec', 'MpichExec', 'IntelMpiExec',
     'CrayMpichExec', 'MpiExec',
-    
+
     # File transfer
     'ScpExec', 'PscpExec',
-    
+
     # Factory and utilities
     'Exec', 'Kill', 'KillAll', 'Which', 'Mkdir', 'Rm', 'Chmod', 'Sleep', 'Echo',
-    
+
     # Resource graph
-    'ResourceGraphExec'
+    'ResourceGraphExec',
+
+    # Container compose
+    'PodmanComposeExec', 'DockerComposeExec', 'ContainerComposeExec',
+    'PodmanBuildExec', 'DockerBuildExec', 'ContainerBuildExec',
+
+    # Container exec
+    'PodmanContainerExec', 'DockerContainerExec', 'ContainerExec'
 ]
