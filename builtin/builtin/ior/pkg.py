@@ -67,13 +67,6 @@ class Ior(Application):
         # Add all IOR parameters (shared by both default and container deployments)
         ior_menu = [
             {
-                'name': 'deploy',
-                'msg': 'Deployment method for IOR',
-                'type': str,
-                'choices': ['default', 'podman', 'docker'],
-                'default': 'default',
-            },
-            {
                 'name': 'write',
                 'msg': 'Perform a write workload',
                 'type': bool,
@@ -149,12 +142,6 @@ class Ior(Application):
                 'msg': 'Use direct I/O (O_DIRECT) for POSIX API, bypassing I/O buffers',
                 'type': bool,
                 'default': False,
-            },
-            {
-                'name': 'deploy_ssh_port',
-                'msg': 'SSH port for containerized deployment (must not conflict with host SSH)',
-                'type': int,
-                'default': 2222,
             }
         ]
 

@@ -337,7 +337,24 @@ class JarvisCLI(ArgParse):
                 'rank': 1
             }
         ])
-        
+
+        # Container commands
+        self.add_menu('container', msg="Container image management commands")
+
+        self.add_cmd('container list', msg="List all container images", aliases=['container ls'])
+        self.add_args([])
+
+        self.add_cmd('container remove', msg="Remove a container image", aliases=['container rm'])
+        self.add_args([
+            {
+                'name': 'container_name',
+                'msg': 'Name of container to remove',
+                'type': str,
+                'required': True,
+                'pos': True
+            }
+        ])
+
         # Package commands
         self.add_menu('pkg', msg="Package management commands")
         
@@ -1181,7 +1198,22 @@ class JarvisCLI(ArgParse):
         package_name = self.kwargs['package_name']
         package_type = self.kwargs['package_type']
         self.repo_manager.create_package(package_name, package_type)
-        
+
+    def container_list(self):
+        """List all container images"""
+        self._ensure_config_loaded()
+        from jarvis_cd.core.container import ContainerManager
+        container_manager = ContainerManager()
+        container_manager.list_containers()
+
+    def container_remove(self):
+        """Remove a container image"""
+        self._ensure_config_loaded()
+        container_name = self.kwargs['container_name']
+        from jarvis_cd.core.container import ContainerManager
+        container_manager = ContainerManager()
+        container_manager.remove_container(container_name)
+
     def pkg_configure(self):
         """Configure package"""
         self._ensure_initialized()

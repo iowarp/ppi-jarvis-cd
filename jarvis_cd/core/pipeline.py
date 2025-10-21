@@ -33,7 +33,12 @@ class Pipeline:
         self.last_loaded_file = None
         self.shm_container = None  # Container for shared memory IPC
         self.shm_size = "8g"  # Default shared memory size
-        
+
+        # Container parameters
+        self.container_name = ""  # Empty string means not containerized
+        self.container_engine = "podman"  # Default container engine
+        self.container_base = "iowarp/iowarp-deps:latest"  # Base image
+
         # Load existing pipeline if name is provided
         if name:
             self.load()
@@ -118,6 +123,14 @@ class Pipeline:
             pipeline_config['shm_container'] = self.shm_container
         if self.shm_size:
             pipeline_config['shm_size'] = self.shm_size
+
+        # Add container parameters
+        if self.container_name:
+            pipeline_config['container_name'] = self.container_name
+        if self.container_engine:
+            pipeline_config['container_engine'] = self.container_engine
+        if self.container_base:
+            pipeline_config['container_base'] = self.container_base
 
         # Convert packages to script format (pkg_type + config parameters)
         for pkg in self.packages:
@@ -229,8 +242,9 @@ class Pipeline:
 
                 pkg_instance = self._load_package_instance(pkg_def, self.env)
 
-                # Apply interceptors to this package before starting
-                self._apply_interceptors_to_package(pkg_instance, pkg_def)
+                # Apply interceptors to this package before starting (skip in container mode)
+                if not self.container_name:
+                    self._apply_interceptors_to_package(pkg_instance, pkg_def)
 
                 if hasattr(pkg_instance, 'start'):
                     pkg_instance.start()
@@ -558,6 +572,10 @@ class Pipeline:
             else:
                 print(f"Package {pkg_id} has no configure method")
 
+            # Build container if pipeline is containerized
+            if self.container_name:
+                self._add_package_to_container_image(pkg_instance, pkg_def)
+
             # Save updated pipeline
             self.save()
             print(f"Saved configuration for {pkg_id}")
@@ -747,6 +765,11 @@ class Pipeline:
         self.interceptors = {}  # Store pipeline-level interceptors by name
         self.shm_container = pipeline_def.get('shm_container')
         self.shm_size = pipeline_def.get('shm_size', '8g')
+
+        # Load container parameters
+        self.container_name = pipeline_def.get('container_name', '')
+        self.container_engine = pipeline_def.get('container_engine', 'podman')
+        self.container_base = pipeline_def.get('container_base', 'iowarp/iowarp-deps:latest')
         
         # Process interceptors
         interceptors_list = pipeline_def.get('interceptors', [])
@@ -763,13 +786,13 @@ class Pipeline:
         
         # Validate that interceptor and package IDs are unique
         self._validate_unique_ids()
-        
+
         # Save pipeline configuration and environment
         self.save()
-        
+
         # Set as current pipeline
         self.jarvis.jarvis_config.set_current_pipeline(self.name)
-        
+
         print(f"Loaded pipeline: {self.name}")
         print(f"Packages: {[pkg['pkg_id'] for pkg in self.packages]}")
     
@@ -1056,3 +1079,175 @@ class Pipeline:
 
             except Exception as e:
                 logger.error(f"Error applying interceptor '{interceptor_name}': {e}")
+
+    def _get_container_manifest_path(self) -> Path:
+        """Get the path to the container manifest file."""
+        if not self.container_name:
+            raise ValueError("Container name not set")
+        containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
+        containers_dir.mkdir(parents=True, exist_ok=True)
+        return containers_dir / f"{self.container_name}.yaml"
+
+    def _get_container_dockerfile_path(self) -> Path:
+        """Get the path to the container Dockerfile."""
+        if not self.container_name:
+            raise ValueError("Container name not set")
+        containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
+        containers_dir.mkdir(parents=True, exist_ok=True)
+        return containers_dir / f"{self.container_name}.Dockerfile"
+
+    def _load_container_manifest(self) -> Dict[str, str]:
+        """
+        Load the container manifest.
+        Returns dict mapping pkg_type -> deploy_mode.
+        """
+        manifest_path = self._get_container_manifest_path()
+        if not manifest_path.exists():
+            return {}
+
+        with open(manifest_path, 'r') as f:
+            manifest = yaml.safe_load(f) or {}
+        return manifest
+
+    def _save_container_manifest(self, manifest: Dict[str, str]):
+        """
+        Save the container manifest.
+        manifest is a dict mapping pkg_type -> deploy_mode.
+        """
+        manifest_path = self._get_container_manifest_path()
+        with open(manifest_path, 'w') as f:
+            yaml.dump(manifest, f, default_flow_style=False)
+
+    def _check_package_in_container(self, pkg_type: str, deploy_mode: str) -> tuple:
+        """
+        Check if a package is already installed in the container.
+
+        :param pkg_type: Package type (e.g., 'builtin.ior')
+        :param deploy_mode: Deploy mode for this package
+        :return: (is_installed, needs_error) tuple
+        """
+        manifest = self._load_container_manifest()
+
+        if pkg_type not in manifest:
+            return (False, False)  # Not installed
+
+        installed_mode = manifest[pkg_type]
+        if installed_mode == deploy_mode:
+            return (True, False)  # Already installed with same mode
+
+        # Installed with different mode - this is an error
+        return (True, True)
+
+    def _add_package_to_container(self, pkg_type: str, deploy_mode: str, dockerfile_commands: str):
+        """
+        Add a package to the container image.
+
+        :param pkg_type: Package type (e.g., 'builtin.ior')
+        :param deploy_mode: Deploy mode for this package
+        :param dockerfile_commands: Dockerfile commands to append
+        """
+        # Update manifest
+        manifest = self._load_container_manifest()
+        manifest[pkg_type] = deploy_mode
+        self._save_container_manifest(manifest)
+
+        # Append to Dockerfile
+        dockerfile_path = self._get_container_dockerfile_path()
+
+        # Create Dockerfile with base image if it doesn't exist
+        if not dockerfile_path.exists():
+            with open(dockerfile_path, 'w') as f:
+                f.write(f"FROM {self.container_base}\n\n")
+                f.write("# Disable prompt during packages installation\n")
+                f.write("ARG DEBIAN_FRONTEND=noninteractive\n\n")
+
+        # Append package installation commands
+        with open(dockerfile_path, 'a') as f:
+            f.write(f"# Package: {pkg_type} (deploy_mode: {deploy_mode})\n")
+            f.write(dockerfile_commands)
+            f.write("\n")
+
+    def _add_package_to_container_image(self, pkg_instance, pkg_def: Dict[str, Any]):
+        """
+        Add a configured package to the container image.
+        Calls augment_container() on the package instance and appends to Dockerfile.
+
+        :param pkg_instance: Configured package instance
+        :param pkg_def: Package definition dictionary
+        """
+        pkg_type = pkg_def['pkg_type']
+        deploy_mode = pkg_def['config'].get('deploy_mode', 'default')
+
+        # Check if package is already in container
+        is_installed, has_conflict = self._check_package_in_container(pkg_type, deploy_mode)
+
+        if has_conflict:
+            manifest = self._load_container_manifest()
+            installed_mode = manifest[pkg_type]
+            raise ValueError(
+                f"Package '{pkg_type}' is already installed in container '{self.container_name}' "
+                f"with deploy_mode='{installed_mode}', but pipeline requires deploy_mode='{deploy_mode}'. "
+                f"Different deploy modes for the same package in one container are not allowed."
+            )
+
+        if is_installed:
+            print(f"Package {pkg_type} already in container (deploy_mode={deploy_mode})")
+            return
+
+        # Call augment_container on the instance
+        print(f"Adding {pkg_type} to container (deploy_mode={deploy_mode})")
+
+        try:
+            if hasattr(pkg_instance, 'augment_container'):
+                dockerfile_commands = pkg_instance.augment_container()
+
+                if dockerfile_commands:
+                    self._add_package_to_container(pkg_type, deploy_mode, dockerfile_commands)
+                    print(f"Added {pkg_type} to container")
+
+                    # Rebuild container image
+                    self._build_container_image()
+                else:
+                    print(f"Warning: {pkg_type}.augment_container() returned empty commands")
+            else:
+                print(f"Warning: {pkg_type} does not have augment_container() method")
+
+        except Exception as e:
+            print(f"Error calling augment_container() for {pkg_type}: {e}")
+            raise
+
+    def _build_container_image(self):
+        """
+        Build the container image using ContainerBuildExec.
+        Creates a temporary compose file and uses ContainerBuildExec for the build.
+        """
+        from jarvis_cd.shell.container_compose_exec import ContainerBuildExec
+        from jarvis_cd.shell import LocalExecInfo
+
+        dockerfile_path = self._get_container_dockerfile_path()
+
+        # Create a minimal compose file for building
+        compose_content = f"""version: '3.8'
+
+services:
+  {self.container_name}:
+    build:
+      context: {dockerfile_path.parent}
+      dockerfile: {dockerfile_path.name}
+    image: {self.container_name}
+"""
+
+        # Write temporary compose file
+        compose_path = dockerfile_path.parent / f"{self.container_name}.compose.yaml"
+        with open(compose_path, 'w') as f:
+            f.write(compose_content)
+
+        # Use ContainerBuildExec to build
+        print(f"Building container image: {self.container_name}")
+        prefer_podman = self.container_engine.lower() == 'podman'
+        build_exec = ContainerBuildExec(str(compose_path), LocalExecInfo(), prefer_podman=prefer_podman)
+        build_exec.run()
+        print(f"Container image built: {self.container_name}")
+
+        # Clean up temporary compose file
+        compose_path.unlink()

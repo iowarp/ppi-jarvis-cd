@@ -8,12 +8,17 @@ name: ior_container_test
 # Auto-build environment from current shell
 # No env field - will capture current environment automatically
 
+# Container configuration
+container_name: ior_test_container
+container_engine: podman
+container_base: iowarp/iowarp-deps:latest
+
 pkgs:
   # IOR benchmark with container deployment
   - pkg_type: builtin.ior
     pkg_name: ior_container
-    # Container deployment mode (use 'docker' or 'podman')
-    deploy: docker
+    # Deployment mode: 'default' for bare metal, 'container' for containerized
+    deploy_mode: container
     # IOR benchmark parameters
     nprocs: 2
     ppn: 2
