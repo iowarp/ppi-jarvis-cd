@@ -31,8 +31,6 @@ class Pipeline:
         self.env = {}
         self.created_at = None
         self.last_loaded_file = None
-        self.shm_container = None  # Container for shared memory IPC
-        self.shm_size = "8g"  # Default shared memory size
 
         # Container parameters
         self.container_name = ""  # Empty string means not containerized
@@ -120,11 +118,6 @@ class Pipeline:
             pipeline_config['created_at'] = self.created_at
         if self.last_loaded_file:
             pipeline_config['last_loaded_file'] = self.last_loaded_file
-        if self.shm_container:
-            pipeline_config['shm_container'] = self.shm_container
-        if self.shm_size:
-            pipeline_config['shm_size'] = self.shm_size
-
         # Add container parameters (always save, even if empty/default)
         pipeline_config['container_name'] = self.container_name
         pipeline_config['container_engine'] = self.container_engine
@@ -387,11 +380,16 @@ class Pipeline:
         Build container image if pipeline has container configuration.
         This must be called BEFORE configure_all_packages() because package configuration
         may need the container image to already exist.
+
+        Returns True if container was modified and rebuilt, False otherwise.
         """
         if not self.container_name:
-            return
+            return False
 
         print(f"Building container image: {self.container_name}")
+
+        # Track whether any packages were added
+        self._container_modified = False
 
         # Build container incrementally by adding each package
         for pkg_def in self.packages:
@@ -405,10 +403,13 @@ class Pipeline:
             if deploy_mode == 'container':
                 self._add_package_to_container_build(interceptor_def)
 
-        # Build the final container image
-        if self._get_container_dockerfile_path().exists():
+        # Build the final container image only if modified
+        container_was_modified = self._container_modified
+        if container_was_modified and self._get_container_dockerfile_path().exists():
             self._build_container_image()
             print(f"Container image built: {self.container_name}")
+
+        return container_was_modified
 
     def _add_package_to_container_build(self, pkg_def: Dict[str, Any]):
         """
@@ -445,6 +446,7 @@ class Pipeline:
 
                 if dockerfile_commands:
                     self._add_package_to_container(pkg_type, deploy_mode, dockerfile_commands)
+                    self._container_modified = True  # Mark that container was modified
                     print(f"Added {pkg_type} to container")
                 else:
                     print(f"Warning: {pkg_type}.augment_container() returned empty commands")
@@ -474,6 +476,43 @@ class Pipeline:
         # Save pipeline after configuration
         self.save()
         print("Pipeline configuration saved")
+
+    def update(self, rebuild_container: bool = False, no_cache: bool = False):
+        """
+        Update pipeline by reconfiguring all packages with their existing configurations.
+        This is useful when parts of the pipeline get corrupted or the environment changes.
+
+        :param rebuild_container: Force rebuild of container if containerized
+        :param no_cache: Use --no-cache flag when rebuilding container
+        """
+        # Reconfigure all packages with their existing configurations
+        print("Reconfiguring pipeline packages with existing configurations...")
+        container_was_modified = self.build_container_if_needed()
+        self.configure_all_packages()
+
+        # Handle forced container rebuild if explicitly requested
+        print(f"Debug: rebuild_container={rebuild_container}, container_name={self.container_name}, container_was_modified={container_was_modified}")
+        if rebuild_container and self.container_name:
+            from jarvis_cd.shell.exec_factory import Exec
+            from jarvis_cd.shell.exec_info import LocalExecInfo
+
+            containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
+            dockerfile_path = containers_dir / f'{self.container_name}.Dockerfile'
+
+            if not dockerfile_path.exists():
+                raise FileNotFoundError(f"Dockerfile not found at {dockerfile_path}")
+
+            # Use the pipeline's container engine
+            use_engine = self.container_engine.lower()
+
+            no_cache_flag = " --no-cache" if no_cache else ""
+            build_cmd = f"{use_engine} build{no_cache_flag} -t {self.container_name} -f {dockerfile_path} {containers_dir}"
+
+            print(f"Force rebuilding container '{self.container_name}' using {use_engine}...")
+            Exec(build_cmd, LocalExecInfo()).run()
+            print(f"Container '{self.container_name}' rebuilt successfully")
+        elif container_was_modified:
+            print(f"Container '{self.container_name}' was automatically rebuilt due to manifest changes")
 
     def _configure_package_instance(self, pkg_def: Dict[str, Any], pkg_type_label: str):
         """
@@ -740,8 +779,6 @@ class Pipeline:
         # Extract metadata
         self.created_at = pipeline_config.get('created_at')
         self.last_loaded_file = pipeline_config.get('last_loaded_file')
-        self.shm_container = pipeline_config.get('shm_container')
-        self.shm_size = pipeline_config.get('shm_size', '8g')
 
         # Load container parameters
         self.container_name = pipeline_config.get('container_name', '')
@@ -855,8 +892,6 @@ class Pipeline:
         self.last_loaded_file = str(pipeline_file.absolute())
         self.packages = []
         self.interceptors = {}  # Store pipeline-level interceptors by name
-        self.shm_container = pipeline_def.get('shm_container')
-        self.shm_size = pipeline_def.get('shm_size', '8g')
 
         # Load container parameters
         self.container_name = pipeline_def.get('container_name', '')
@@ -891,8 +926,17 @@ class Pipeline:
         if self.container_name:
             print(f"Generating container configuration files...")
             self._generate_pipeline_container_yaml()
-            self._generate_pipeline_dockerfile()
-            self._build_global_container_image()
+
+            # Check if container needs rebuilding
+            needs_rebuild = self._check_container_needs_rebuild()
+            self._generate_pipeline_dockerfile()  # Updates manifest
+
+            if needs_rebuild:
+                print(f"Container manifest changed, rebuilding...")
+                self._build_global_container_image()
+            else:
+                print(f"Container manifest unchanged, skipping rebuild (use 'jarvis container update {self.container_name}' to force)")
+
             self._generate_pipeline_compose_file()
 
         # Set as current pipeline
@@ -1033,10 +1077,6 @@ class Pipeline:
         # Merge YAML config on top of defaults
         merged_config = default_config.copy()
         merged_config.update(yaml_config)
-
-        # Debug output for deploy_mode
-        if 'deploy_mode' in yaml_config or 'deploy_mode' in default_config:
-            print(f"DEBUG _process_package_definition: default deploy_mode={default_config.get('deploy_mode')}, yaml deploy_mode={yaml_config.get('deploy_mode')}, merged={merged_config.get('deploy_mode')}")
 
         return {
             'pkg_type': pkg_type,
@@ -1410,6 +1450,39 @@ services:
         print(f"Generated pipeline YAML: {yaml_path}")
         return yaml_path
 
+    def _check_container_needs_rebuild(self):
+        """
+        Check if the container needs to be rebuilt by comparing the current package list
+        with the saved manifest.
+
+        :return: True if rebuild is needed, False otherwise
+        """
+        from pathlib import Path
+        import json
+
+        containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
+        manifest_path = containers_dir / f'{self.container_name}.manifest'
+
+        # If no manifest exists, need to build
+        if not manifest_path.exists():
+            return True
+
+        # Load existing manifest
+        with open(manifest_path, 'r') as f:
+            old_manifest = json.load(f)
+
+        # Create current manifest
+        pkg_types = sorted([pkg_def['pkg_type'] for pkg_def in self.packages])
+        interceptor_types = sorted([idef['pkg_type'] for idef in self.interceptors.values()])
+        current_manifest = {
+            'packages': pkg_types,
+            'interceptors': interceptor_types,
+            'container_base': self.container_base
+        }
+
+        # Compare manifests
+        return old_manifest != current_manifest
+
     def _generate_pipeline_dockerfile(self):
         """
         Generate global container Dockerfile in ~/.ppi-jarvis/containers/ by calling
@@ -1461,6 +1534,19 @@ services:
                 print(f"Warning: Could not augment container for interceptor {interceptor_def['pkg_type']}: {e}")
 
         # Note: CMD is not added to global Dockerfile - it will be specified in docker-compose
+
+        # Save container manifest (list of package types for rebuild detection)
+        manifest_path = containers_dir / f'{self.container_name}.manifest'
+        pkg_types = [pkg_def['pkg_type'] for pkg_def in self.packages]
+        interceptor_types = [idef['pkg_type'] for idef in self.interceptors.values()]
+        manifest = {
+            'packages': sorted(pkg_types),
+            'interceptors': sorted(interceptor_types),
+            'container_base': self.container_base
+        }
+        import json
+        with open(manifest_path, 'w') as f:
+            json.dump(manifest, f, indent=2)
 
         print(f"Generated global Dockerfile: {dockerfile_path}")
         return dockerfile_path
@@ -1532,32 +1618,55 @@ services:
 
         # Create compose configuration using the global container image
         private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(self.name)
-        compose_config = {
-            'services': {
-                self.name: {
-                    'container_name': container_name,
-                    'image': self.container_name,  # Use pre-built global image
-                    'entrypoint': ['/bin/bash', '-c'],
-                    'command': [container_cmd],
-                    'network_mode': 'host',
-                    'volumes': [
-                        f"{private_dir}:/root/.ppi-jarvis/private",
-                        f"{shared_dir}:/root/.ppi-jarvis/shared",
-                        f"{ssh_dir}:/root/.ssh_host:ro"
-                    ]
+
+        service_config = {
+            'container_name': container_name,
+            'image': self.container_name,  # Use pre-built global image
+            'entrypoint': ['/bin/bash', '-c'],
+            'command': [container_cmd],
+            'network_mode': 'host',
+            'ipc': 'host',  # Share IPC namespace with host (removes shm limits)
+            'volumes': [
+                f"{private_dir}:/root/.ppi-jarvis/private",
+                f"{shared_dir}:/root/.ppi-jarvis/shared",
+                f"{ssh_dir}:/root/.ssh_host:ro"
+            ],
+            'ulimits': {
+                'memlock': {
+                    'soft': -1,
+                    'hard': -1
+                },
+                'stack': {
+                    'soft': 67108864,
+                    'hard': 67108864
                 }
             }
         }
 
-        # Handle shared memory if configured
-        shm_size = 0
-        for pkg_def in self.packages:
-            pkg_shm = pkg_def['config'].get('shm_size', 0)
-            if pkg_shm > 0:
-                shm_size = max(shm_size, pkg_shm)
+        # Add GPU configuration based on container engine
+        if self.container_engine.lower() == 'docker':
+            # Docker Compose format for GPU
+            service_config['deploy'] = {
+                'resources': {
+                    'reservations': {
+                        'devices': [
+                            {
+                                'driver': 'nvidia',
+                                'count': 'all',
+                                'capabilities': ['gpu', 'compute', 'utility']
+                            }
+                        ]
+                    }
+                }
+            }
+        # Podman doesn't use deploy/resources - GPU access works via --device which
+        # is handled at runtime, not in compose file
 
-        if shm_size > 0:
-            compose_config['services'][self.name]['shm_size'] = f'{shm_size}m'
+        compose_config = {
+            'services': {
+                self.name: service_config
+            }
+        }
 
         # Write compose file
         with open(compose_path, 'w') as f:

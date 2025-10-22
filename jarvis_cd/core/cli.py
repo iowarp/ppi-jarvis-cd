@@ -175,6 +175,18 @@ class JarvisCLI(ArgParse):
                 'type': str,
                 'pos': True,
                 'default': 'yaml'
+            },
+            {
+                'name': 'container',
+                'msg': 'Rebuild container image',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'no_cache',
+                'msg': 'Disable cache during container rebuild',
+                'type': bool,
+                'default': False
             }
         ])
         
@@ -377,6 +389,30 @@ class JarvisCLI(ArgParse):
                 'type': str,
                 'required': True,
                 'pos': True
+            }
+        ])
+
+        self.add_cmd('container update', msg="Force rebuild a container image")
+        self.add_args([
+            {
+                'name': 'container_name',
+                'msg': 'Name of container to rebuild',
+                'type': str,
+                'required': True,
+                'pos': True
+            },
+            {
+                'name': 'no_cache',
+                'msg': 'Disable cache during rebuild',
+                'type': bool,
+                'default': False
+            },
+            {
+                'name': 'engine',
+                'msg': 'Container engine to use (docker or podman)',
+                'type': str,
+                'default': None,
+                'choices': ['docker', 'podman']
             }
         ])
 
@@ -984,7 +1020,6 @@ class JarvisCLI(ArgParse):
     def ppl_update(self):
         """Update pipeline from last loaded file"""
         self._ensure_initialized()
-        update_type = self.kwargs.get('update_type', 'yaml')
 
         if not self.current_pipeline:
             current_name = self.jarvis_config.get_current_pipeline()
@@ -993,13 +1028,10 @@ class JarvisCLI(ArgParse):
             else:
                 raise ValueError("No current pipeline to update")
 
-        # For update, we need to reload from the last loaded file
-        if hasattr(self.current_pipeline, 'last_loaded_file') and self.current_pipeline.last_loaded_file:
-            self.current_pipeline.load(update_type, self.current_pipeline.last_loaded_file)
-            self.current_pipeline.build_container_if_needed()
-            self.current_pipeline.configure_all_packages()
-        else:
-            raise ValueError("No pipeline file to update from")
+        # Use Pipeline.update() method with container rebuild flags
+        rebuild_container = self.kwargs.get('container', False)
+        no_cache = self.kwargs.get('no_cache', False)
+        self.current_pipeline.update(rebuild_container=rebuild_container, no_cache=no_cache)
         
     def ppl_list(self):
         """List all pipelines"""
@@ -1260,6 +1292,43 @@ class JarvisCLI(ArgParse):
         from jarvis_cd.core.container import ContainerManager
         container_manager = ContainerManager()
         container_manager.remove_container(container_name)
+
+    def container_update(self):
+        """Force rebuild a container image"""
+        self._ensure_initialized()
+        container_name = self.kwargs['container_name']
+        no_cache = self.kwargs.get('no_cache', False)
+        engine = self.kwargs.get('engine')
+        from pathlib import Path
+
+        containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
+        dockerfile_path = containers_dir / f'{container_name}.Dockerfile'
+
+        if not dockerfile_path.exists():
+            print(f"Error: Container '{container_name}' not found")
+            print(f"Expected Dockerfile at: {dockerfile_path}")
+            sys.exit(1)
+
+        # Determine container engine
+        from jarvis_cd.shell import Exec, LocalExecInfo
+        import shutil
+
+        if engine:
+            # Use specified engine
+            use_engine = engine
+        elif shutil.which('podman'):
+            use_engine = 'podman'
+        else:
+            use_engine = 'docker'
+
+        # Build command with optional --no-cache flag
+        no_cache_flag = " --no-cache" if no_cache else ""
+        build_cmd = f"{use_engine} build{no_cache_flag} -t {container_name} -f {dockerfile_path} {containers_dir}"
+
+        cache_msg = " (no cache)" if no_cache else " (with cache)"
+        print(f"Rebuilding container image: {container_name}{cache_msg} using {use_engine}")
+        Exec(build_cmd, LocalExecInfo()).run()
+        print(f"Container image rebuilt: {container_name}")
 
     def pkg_configure(self):
         """Configure package"""
