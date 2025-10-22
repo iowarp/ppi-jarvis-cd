@@ -1634,17 +1634,7 @@ services:
                 f"{private_dir}:/root/.ppi-jarvis/private",
                 f"{shared_dir}:/root/.ppi-jarvis/shared",
                 f"{ssh_dir}:/root/.ssh_host:ro"
-            ],
-            'ulimits': {
-                'memlock': {
-                    'soft': -1,
-                    'hard': -1
-                },
-                'stack': {
-                    'soft': 67108864,
-                    'hard': 67108864
-                }
-            }
+            ]
         }
 
         # Note: GPU configuration is not included by default

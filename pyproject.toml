@@ -23,6 +23,7 @@ classifiers = [
 dependencies = [
   "pyyaml",
   "pandas",
+  "podman-compose",
 ]
 
 [project.urls]

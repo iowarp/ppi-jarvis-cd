@@ -35,7 +35,16 @@ class PodmanBuildExec(CoreExec):
         if shutil.which('podman-compose'):
             return f"podman-compose -f {self.compose_file} build"
         else:
-            return f"podman compose -f {self.compose_file} build"
+            # Check if podman has compose subcommand
+            from .exec_info import LocalExecInfo
+            test_exec = LocalExec('podman compose --help', LocalExecInfo())
+            if test_exec.exit_code == 0:
+                return f"podman compose -f {self.compose_file} build"
+
+            raise RuntimeError(
+                "podman-compose not found and podman compose subcommand not available. "
+                "Please install podman-compose: pip install podman-compose"
+            )
 
     def run(self):
         """Execute the podman compose build command"""
@@ -170,7 +179,16 @@ class PodmanComposeExec(CoreExec):
         if shutil.which('podman-compose'):
             cmd = f"podman-compose -f {self.compose_file} {self.action}"
         else:
-            cmd = f"podman compose -f {self.compose_file} {self.action}"
+            # Check if podman has compose subcommand
+            from .exec_info import LocalExecInfo
+            test_exec = LocalExec('podman compose --help', LocalExecInfo())
+            if test_exec.exit_code == 0:
+                cmd = f"podman compose -f {self.compose_file} {self.action}"
+            else:
+                raise RuntimeError(
+                    "podman-compose not found and podman compose subcommand not available. "
+                    "Please install podman-compose: pip install podman-compose"
+                )
         # For 'up', add flags to show output and exit when container stops
         if self.action == 'up':
             cmd += " --abort-on-container-exit"
