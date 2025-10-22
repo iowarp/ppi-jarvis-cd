@@ -286,7 +286,387 @@ This integration provides a complete development ecosystem where users can:
 
 ## Package Types
 
-Jarvis-CD provides several base classes for different types of packages:
+Jarvis-CD provides several base classes for different types of packages. **The recommended approach is to use multi-implementation packages with RouteApp**, which allows a single package to support multiple deployment modes (e.g., bare metal, containerized).
+
+## Multi-Implementation Packages (RECOMMENDED)
+
+**This is the default and recommended way to create packages.** Multi-implementation packages use the `RouteApp` pattern to support multiple deployment modes from a single package interface.
+
+### Architecture Overview
+
+A multi-implementation package consists of:
+
+1. **Router Class (`pkg.py`)**: Main package class that inherits from `RouteApp` and defines the configuration menu
+2. **Implementation Delegates**: Separate files for each deployment mode (e.g., `default.py`, `container.py`)
+3. **Deployment Mode Routing**: The router automatically delegates lifecycle methods to the appropriate implementation based on `deploy_mode`
+
+### Directory Structure
+
+```
+my_package/
+├── __init__.py               # Package initialization
+├── pkg.py                    # Router class (inherits from RouteApp)
+├── default.py                # Default (bare metal) implementation
+├── container.py              # Container implementation (optional)
+└── README.md                 # Package documentation
+```
+
+### The RouteApp Pattern
+
+`RouteApp` is a base class that provides automatic routing to deployment-specific implementations. It eliminates code duplication and makes packages deployment-agnostic.
+
+#### Router Class Example (`pkg.py`)
+
+```python
+"""
+IOR benchmark package - supports both bare metal and containerized deployment.
+"""
+from jarvis_cd.core.route_pkg import RouteApp
+
+
+class Ior(RouteApp):
+    """
+    Router class for IOR deployment - delegates to default or container implementation.
+    """
+
+    def _configure_menu(self):
+        """
+        Define configuration parameters shared by all deployment modes.
+
+        :return: List of configuration dictionaries
+        """
+        # Get base menu from RouteApp (includes interceptors and deploy_mode)
+        base_menu = super()._configure_menu()
+
+        # Add package-specific parameters
+        ior_menu = [
+            {
+                'name': 'nprocs',
+                'msg': 'Number of processes',
+                'type': int,
+                'default': 1,
+            },
+            {
+                'name': 'block',
+                'msg': 'Amount of data to generate per-process',
+                'type': str,
+                'default': '32m',
+            },
+            {
+                'name': 'xfer',
+                'msg': 'The size of data transfer',
+                'type': str,
+                'default': '1m',
+            },
+            {
+                'name': 'api',
+                'msg': 'The I/O api to use',
+                'type': str,
+                'choices': ['posix', 'mpiio', 'hdf5'],
+                'default': 'posix',
+            }
+        ]
+
+        return base_menu + ior_menu
+
+    def _get_deploy_mode(self) -> str:
+        """
+        Get deploy mode and optionally map old values to new values.
+
+        :return: Deploy mode string
+        """
+        # Check pipeline deploy_mode first (pipeline-level setting)
+        if hasattr(self.pipeline, 'deploy_mode') and self.pipeline.deploy_mode:
+            deploy_mode = self.pipeline.deploy_mode
+        else:
+            # Fall back to package-level deploy_mode config
+            deploy_mode = self.config.get('deploy_mode', 'default')
+
+        # Optional: Map old values to new values for backwards compatibility
+        if deploy_mode in ['docker', 'podman']:
+            deploy_mode = 'container'
+
+        return deploy_mode
+```
+
+**Key Points:**
+- Router class name matches package name (e.g., `Ior` for `builtin.ior`)
+- Only implements `_configure_menu()` and optionally `_get_deploy_mode()`
+- All lifecycle methods (`start`, `stop`, `clean`, `kill`, `status`) are automatically delegated
+- Configuration menu is shared across all deployment modes
+
+#### Default Implementation (`default.py`)
+
+```python
+"""
+IOR benchmark - bare metal deployment.
+"""
+from jarvis_cd.core.pkg import Application
+from jarvis_cd.shell import Exec, MpiExecInfo, PsshExecInfo, Mkdir
+
+
+class IorDefault(Application):
+    """
+    IOR deployment on bare metal using MPI.
+    """
+
+    def _init(self):
+        """Initialize paths"""
+        pass
+
+    def _configure(self, **kwargs):
+        """
+        Configure for bare metal deployment.
+
+        :param kwargs: Configuration parameters
+        """
+        # Call parent configuration
+        super()._configure(**kwargs)
+
+        # Create output directory on all nodes
+        import os
+        import pathlib
+        out = os.path.expandvars(self.config['out'])
+        parent_dir = str(pathlib.Path(out).parent)
+        Mkdir(parent_dir,
+              PsshExecInfo(env=self.mod_env,
+                           hostfile=self.jarvis.hostfile)).run()
+
+    def start(self):
+        """
+        Start IOR benchmark.
+        """
+        cmd = [
+            'ior',
+            f'-b {self.config["block"]}',
+            f'-t {self.config["xfer"]}',
+            f'-a {self.config["api"]}',
+            f'-o {self.config["out"]}',
+        ]
+
+        Exec(' '.join(cmd),
+             MpiExecInfo(env=self.mod_env,
+                         hostfile=self.jarvis.hostfile,
+                         nprocs=self.config['nprocs'],
+                         ppn=self.config['ppn'])).run()
+
+    def stop(self):
+        """Stop IOR (usually no action needed for benchmarks)"""
+        pass
+
+    def clean(self):
+        """Clean IOR output files"""
+        from jarvis_cd.shell import Rm
+        Rm(self.config['out'] + '*',
+           PsshExecInfo(env=self.env,
+                        hostfile=self.jarvis.hostfile)).run()
+```
+
+**Key Points:**
+- Class name is `{PackageName}Default` (e.g., `IorDefault`)
+- Inherits from `Application` or `Service`
+- Implements standard lifecycle methods for bare metal deployment
+- Has access to all package configuration via `self.config`
+
+#### Container Implementation (`container.py`)
+
+```python
+"""
+IOR benchmark - containerized deployment.
+"""
+from jarvis_cd.core.container_pkg import ContainerApplication
+
+
+class IorContainer(ContainerApplication):
+    """
+    IOR deployment using Docker/Podman containers.
+    """
+
+    def augment_container(self) -> str:
+        """
+        Generate Dockerfile commands to install IOR in a container.
+
+        :return: Dockerfile commands as a string
+        """
+        return """
+# Install IOR using spack
+RUN . "${SPACK_DIR}/share/spack/setup-env.sh" && \\
+    spack install -y ior
+
+# Copy IOR executables to /usr/bin
+RUN . "${SPACK_DIR}/share/spack/setup-env.sh" && \\
+    spack load ior && \\
+    cp -r $(spack location -i ior)/bin/* /usr/bin || true && \\
+    cp -r $(spack location -i mpi)/bin/* /usr/bin || true
+"""
+
+    def _configure(self, **kwargs):
+        """
+        Configure container deployment.
+
+        :param kwargs: Configuration parameters
+        """
+        # Call parent configuration
+        super()._configure(**kwargs)
+
+        # Note: For pipeline-level containers, Dockerfile and compose files
+        # are generated by the pipeline, not by individual packages.
+```
+
+**Key Points:**
+- Class name is `{PackageName}Container` (e.g., `IorContainer`)
+- Inherits from `ContainerApplication`
+- Implements `augment_container()` to add package to container image
+- `start()`, `stop()`, `clean()` are handled by pipeline-level container orchestration
+
+### Deploy Mode Routing
+
+The `deploy_mode` parameter determines which implementation delegate is used:
+
+| `deploy_mode` Value | Delegate Class Name | Implementation File |
+|---------------------|---------------------|---------------------|
+| `default` | `{PackageName}Default` | `default.py` |
+| `container` | `{PackageName}Container` | `container.py` |
+| `kubernetes` | `{PackageName}Kubernetes` | `kubernetes.py` |
+| Custom | `{PackageName}{CustomMode}` | `{custom_mode}.py` |
+
+**Routing Logic:**
+1. Router calls `_get_deploy_mode()` to determine deployment mode
+2. Router constructs delegate class name: `f"{PackageName}{DeployMode.title()}"`
+3. Router imports and instantiates delegate from appropriate file
+4. Router forwards lifecycle method calls to delegate
+
+### Deploy Mode Configuration
+
+The `deploy_mode` can be set at two levels:
+
+#### 1. Pipeline-Level (Recommended for Containers)
+
+Set `deploy_mode` at the pipeline level to containerize all packages:
+
+```yaml
+name: my_pipeline
+
+# Container configuration - applies to all packages with container support
+deploy_mode: container
+container_name: my_app_container
+container_engine: podman
+container_base: docker.io/iowarp/iowarp-deps:ai
+
+pkgs:
+  - pkg_type: builtin.ior
+    pkg_name: ior_benchmark
+    # Inherits deploy_mode=container from pipeline
+    nprocs: 4
+    block: 1G
+```
+
+#### 2. Package-Level (Per-Package Control)
+
+Set `deploy_mode` per package for mixed deployments:
+
+```yaml
+name: my_pipeline
+
+pkgs:
+  # Run IOR in container
+  - pkg_type: builtin.ior
+    pkg_name: ior_benchmark
+    deploy_mode: container  # Package-specific setting
+    nprocs: 4
+
+  # Run database on bare metal
+  - pkg_type: builtin.redis
+    pkg_name: database
+    deploy_mode: default  # Bare metal deployment
+    port: 6379
+```
+
+### Adding Multiple Deployment Modes
+
+To support additional deployment modes, simply add new implementation files:
+
+```python
+# custom_mode.py
+from jarvis_cd.core.pkg import Application
+
+class IorCustomMode(Application):
+    """Custom deployment mode"""
+
+    def _configure(self, **kwargs):
+        super()._configure(**kwargs)
+        # Custom configuration logic
+
+    def start(self):
+        # Custom start logic
+        pass
+```
+
+Then use it in pipeline YAML:
+
+```yaml
+pkgs:
+  - pkg_type: builtin.ior
+    deploy_mode: custom_mode  # Routes to IorCustomMode class
+```
+
+### Benefits of Multi-Implementation Pattern
+
+1. **Single Package Interface**: Users interact with one package regardless of deployment mode
+2. **No Code Duplication**: Configuration menu defined once in router class
+3. **Easy Maintenance**: Update deployment logic without changing package interface
+4. **Backwards Compatibility**: Map old configuration values to new modes
+5. **Flexible Deployment**: Mix deployment modes within single pipeline
+6. **Container Support**: Seamless integration with containerized deployments
+
+### Migration from Single-Implementation Packages
+
+To migrate an existing package to multi-implementation:
+
+1. **Create router class** in `pkg.py`:
+   ```python
+   from jarvis_cd.core.route_pkg import RouteApp
+
+   class MyPackage(RouteApp):
+       def _configure_menu(self):
+           base_menu = super()._configure_menu()
+           # Move configuration menu here
+           return base_menu + my_menu
+   ```
+
+2. **Move existing implementation** to `default.py`:
+   ```python
+   from jarvis_cd.core.pkg import Application
+
+   class MyPackageDefault(Application):
+       # Move existing lifecycle methods here
+       def _configure(self, **kwargs):
+           super()._configure(**kwargs)
+           # Existing configuration logic
+
+       def start(self):
+           # Existing start logic
+           pass
+   ```
+
+3. **Add container implementation** (optional) in `container.py`:
+   ```python
+   from jarvis_cd.core.container_pkg import ContainerApplication
+
+   class MyPackageContainer(ContainerApplication):
+       def augment_container(self) -> str:
+           return """# Dockerfile commands"""
+   ```
+
+4. **Update `__init__.py`**:
+   ```python
+   from .pkg import MyPackage
+   __all__ = ['MyPackage']
+   ```
+
+## Traditional Package Types (Legacy)
+
+The following base classes are available for packages that don't need multiple deployment modes. However, **RouteApp is now recommended** even for single-mode packages to support future extensibility.
 
 ### 1. SimplePackage (jarvis_cd.basic.pkg.SimplePackage)
 

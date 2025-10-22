@@ -491,7 +491,6 @@ class Pipeline:
         self.configure_all_packages()
 
         # Handle forced container rebuild if explicitly requested
-        print(f"Debug: rebuild_container={rebuild_container}, container_name={self.container_name}, container_was_modified={container_was_modified}")
         if rebuild_container and self.container_name:
             from jarvis_cd.shell.exec_factory import Exec
             from jarvis_cd.shell.exec_info import LocalExecInfo

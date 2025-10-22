@@ -226,6 +226,198 @@ name: my_pipeline
 # No env field - automatically captures current environment
 ```
 
+### Container Configuration
+
+Pipelines can be configured to run all packages in a shared container environment. This is useful for reproducibility, dependency management, and multi-node deployments.
+
+#### Container Pipeline Parameters
+
+```yaml
+name: my_containerized_pipeline
+
+# Container configuration (all fields optional)
+container_name: my_app_container                    # Container/image name (required for containerization)
+container_engine: podman                            # Container engine: docker or podman (default: podman)
+container_base: docker.io/iowarp/iowarp-deps:ai    # Base image to build FROM
+container_ssh_port: 2222                            # SSH port for container communication (default: 2222)
+
+pkgs:
+  - pkg_type: builtin.ior
+    deploy_mode: container  # Use containerized deployment
+    nprocs: 4
+```
+
+**Container Configuration Fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `container_name` | string | `""` (not containerized) | Name for the container image. If set, enables containerization |
+| `container_engine` | string | `"podman"` | Container engine to use (`docker` or `podman`) |
+| `container_base` | string | `"iowarp/iowarp-deps:ai"` | Base Docker image to build from |
+| `container_ssh_port` | int | `2222` | SSH port for inter-container and container-host communication |
+
+#### How Container Pipelines Work
+
+1. **Container Build Phase** (`jarvis ppl load yaml` or `jarvis ppl configure`):
+   - Pipeline collects all packages with `deploy_mode=container`
+   - Each package's `augment_container()` method adds installation commands to Dockerfile
+   - Pipeline generates global Dockerfile in `~/.ppi-jarvis/containers/{container_name}.Dockerfile`
+   - Container image is built and tagged as `{container_name}`
+   - Manifest file tracks installed packages to avoid unnecessary rebuilds
+
+2. **Container Deployment Phase** (`jarvis ppl start`):
+   - Pipeline starts containers on all nodes in hostfile using `pssh`
+   - Containers run with `network_mode: host` and `ipc: host` for performance
+   - SSH daemon starts inside container for multi-node MPI communication
+   - Pipeline YAML is mounted into container at `/root/.ppi-jarvis/shared/pipeline.yaml`
+   - Packages execute inside container with full environment and interceptor support
+
+3. **Container Lifecycle**:
+   - `jarvis ppl start`: Brings up containers on all nodes, runs pipeline packages
+   - `jarvis ppl stop`: Gracefully stops containers
+   - `jarvis ppl kill`: Force terminates containers
+   - `jarvis ppl clean`: Removes container data
+
+#### Complete Container Pipeline Example
+
+```yaml
+# Pipeline: Containerized I/O Benchmark
+# Purpose: Run IOR benchmark in reproducible container environment
+# Requirements: Podman or Docker installed on all nodes
+# Expected Runtime: 5-10 minutes (including container build)
+
+name: ior_container_benchmark
+
+# Auto-build environment from current shell
+# No env field - will capture current environment automatically
+
+# Container configuration
+container_name: ior_benchmark_container
+container_engine: podman
+container_base: docker.io/iowarp/iowarp-deps:ai
+container_ssh_port: 2222
+
+pkgs:
+  # IOR benchmark with container deployment
+  - pkg_type: builtin.ior
+    pkg_name: ior_test
+    # Deployment mode: 'default' for bare metal, 'container' for containerized
+    deploy_mode: container
+    # IOR benchmark parameters
+    nprocs: 4
+    ppn: 2
+    block: 1G
+    xfer: 1M
+    api: posix
+    out: /tmp/ior_test_file
+    write: true
+    read: true
+```
+
+#### Mixed Deployment: Bare Metal + Container
+
+You can run some packages on bare metal and others in containers within the same pipeline:
+
+```yaml
+name: mixed_deployment_pipeline
+
+# Container configuration for packages that need it
+container_name: app_container
+container_engine: docker
+container_base: docker.io/iowarp/iowarp-deps:ai
+
+pkgs:
+  # Run database on bare metal (better performance)
+  - pkg_type: builtin.redis
+    pkg_name: database
+    deploy_mode: default  # Bare metal deployment
+    port: 6379
+    memory_limit: 8G
+
+  # Run application in container (reproducibility)
+  - pkg_type: builtin.my_app
+    pkg_name: containerized_app
+    deploy_mode: container  # Container deployment
+    database_host: localhost
+    database_port: 6379
+```
+
+#### Container Rebuild Control
+
+Containers are automatically rebuilt when:
+- Package manifest changes (packages added/removed)
+- Base image changes
+- First time loading a pipeline with containers
+
+To force a rebuild:
+
+```bash
+# Rebuild specific container
+jarvis container update my_container_name
+
+# Rebuild with no cache (clean rebuild)
+jarvis container update my_container_name +no_cache
+
+# Specify container engine
+jarvis container update my_container_name engine=docker
+
+# Update pipeline and rebuild container
+jarvis ppl update +container +no_cache
+```
+
+#### Container Architecture
+
+**Global Container Storage:**
+- Containers are stored globally in `~/.ppi-jarvis/containers/`
+- Multiple pipelines can share the same container image
+- Container images are tagged and reused across pipeline instances
+
+**Container File Structure:**
+```
+~/.ppi-jarvis/containers/
+├── my_container.Dockerfile     # Generated Dockerfile
+├── my_container.manifest       # Package manifest (JSON)
+└── compose_files/              # Per-pipeline compose files
+    └── pipeline_name/
+        └── docker-compose.yaml
+```
+
+**Container Features:**
+- **Host Networking**: Containers use `network_mode: host` for direct network access
+- **IPC Sharing**: `ipc: host` removes shared memory limits
+- **GPU Access**: Automatic GPU device mapping (Docker and Podman)
+- **Memory Limits**: Configurable ulimits for memlock and stack
+- **SSH Support**: Built-in SSH daemon for MPI multi-node communication
+
+#### Container Best Practices
+
+1. **Use Specific Base Images**: Specify exact image tags for reproducibility
+   ```yaml
+   container_base: docker.io/ubuntu:22.04  # ✅ Good - specific version
+   container_base: ubuntu:latest           # ❌ Avoid - version can change
+   ```
+
+2. **Share Containers Across Pipelines**: Reuse containers with identical package sets
+   ```yaml
+   # Pipeline 1
+   container_name: shared_ior_container
+
+   # Pipeline 2 (reuses same container)
+   container_name: shared_ior_container
+   ```
+
+3. **Test Locally Before Deployment**: Build and test containers locally first
+   ```bash
+   jarvis ppl load yaml my_pipeline.yaml  # Builds container
+   jarvis ppl start                       # Test locally
+   ```
+
+4. **Monitor Container Resources**: Check container disk usage and clean old images
+   ```bash
+   podman images | grep jar  # List Jarvis containers
+   podman system prune       # Clean unused containers
+   ```
+
 ### Package Configuration
 
 #### Basic Package Definition
