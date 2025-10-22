@@ -66,7 +66,7 @@ class TestIorDelegation(unittest.TestCase):
             'pkg_name': 'ior',
             'global_id': f'{self.pipeline.name}.test_ior',
             'config': {
-                'deploy': 'default',
+                'deploy_mode': 'default',
                 'nprocs': 1,
                 'ppn': 16,
                 'block': '32m',
@@ -99,7 +99,7 @@ class TestIorDelegation(unittest.TestCase):
         pkg_instance = self.pipeline._load_package_instance(pkg_def, {})
 
         # Configure with default deploy mode
-        pkg_instance.configure(deploy='default')
+        pkg_instance.configure(deploy_mode='default')
 
         # Get delegate for default mode
         delegate = pkg_instance._get_delegate('default')
@@ -109,7 +109,7 @@ class TestIorDelegation(unittest.TestCase):
                         "Delegate should be IorDefault for deploy='default'")
 
         # Verify delegate has same config
-        self.assertEqual(delegate.config.get('deploy'), 'default',
+        self.assertEqual(delegate.config.get('deploy_mode'), 'default',
                         "Delegate should have same config")
 
     def test_delegate_container_mode(self):
@@ -121,7 +121,7 @@ class TestIorDelegation(unittest.TestCase):
             'pkg_name': 'ior',
             'global_id': f'{self.pipeline.name}.test_ior',
             'config': {
-                'deploy': 'docker',
+                'deploy_mode': 'container',
                 'nprocs': 1,
                 'ppn': 16,
                 'block': '32m',
@@ -153,17 +153,17 @@ class TestIorDelegation(unittest.TestCase):
         pkg_instance = self.pipeline._load_package_instance(pkg_def, {})
 
         # Configure with container deploy mode
-        pkg_instance.configure(deploy='docker')
+        pkg_instance.configure(deploy_mode='container')
 
         # Get delegate for container mode
         delegate = pkg_instance._get_delegate('container')
 
         # Verify delegate is IorContainer
         self.assertEqual(delegate.__class__.__name__, 'IorContainer',
-                        "Delegate should be IorContainer for deploy='docker'")
+                        "Delegate should be IorContainer for deploy_mode='container'")
 
         # Verify delegate has same config
-        self.assertEqual(delegate.config.get('deploy'), 'docker',
+        self.assertEqual(delegate.config.get('deploy_mode'), 'container',
                         "Delegate should have same config")
 
     def test_delegate_caching(self):
@@ -175,7 +175,7 @@ class TestIorDelegation(unittest.TestCase):
             'pkg_name': 'ior',
             'global_id': f'{self.pipeline.name}.test_ior',
             'config': {
-                'deploy': 'default',
+                'deploy_mode': 'default',
                 'nprocs': 1,
                 'ppn': 16,
                 'block': '32m',
@@ -207,7 +207,7 @@ class TestIorDelegation(unittest.TestCase):
         pkg_instance = self.pipeline._load_package_instance(pkg_def, {})
 
         # Configure with default deploy mode
-        pkg_instance.configure(deploy='default')
+        pkg_instance.configure(deploy_mode='default')
 
         # Get delegate twice
         delegate1 = pkg_instance._get_delegate('default')
@@ -226,7 +226,7 @@ class TestIorDelegation(unittest.TestCase):
             'pkg_name': 'ior',
             'global_id': f'{self.pipeline.name}.test_ior',
             'config': {
-                'deploy': 'default',
+                'deploy_mode': 'default',
                 'nprocs': 1,
                 'ppn': 16,
                 'block': '32m',
@@ -258,7 +258,7 @@ class TestIorDelegation(unittest.TestCase):
         pkg_instance = self.pipeline._load_package_instance(pkg_def, {})
 
         # Configure
-        pkg_instance.configure(deploy='default')
+        pkg_instance.configure(deploy_mode='default')
 
         # Get delegates for different modes
         delegate_default = pkg_instance._get_delegate('default')
@@ -281,7 +281,7 @@ class TestIorDelegation(unittest.TestCase):
             'pkg_name': 'ior',
             'global_id': f'{self.pipeline.name}.test_ior',
             'config': {
-                'deploy': 'default',
+                'deploy_mode': 'default',
                 'nprocs': 1,
                 'ppn': 16,
                 'block': '32m',
@@ -313,7 +313,7 @@ class TestIorDelegation(unittest.TestCase):
         pkg_instance = self.pipeline._load_package_instance(pkg_def, {})
 
         # Configure
-        pkg_instance.configure(deploy='default')
+        pkg_instance.configure(deploy_mode='default')
 
         # Try to get delegate with invalid mode
         with self.assertRaises(ImportError) as context:
@@ -331,7 +331,7 @@ class TestIorDelegation(unittest.TestCase):
             'pkg_name': 'ior',
             'global_id': f'{self.pipeline.name}.test_ior',
             'config': {
-                'deploy': 'default',
+                'deploy_mode': 'default',
                 'nprocs': 4,
                 'ppn': 16,
                 'block': '64m',
@@ -363,7 +363,7 @@ class TestIorDelegation(unittest.TestCase):
         pkg_instance = self.pipeline._load_package_instance(pkg_def, {})
 
         # Configure
-        pkg_instance.configure(deploy='default', nprocs=4, block='64m')
+        pkg_instance.configure(deploy_mode='default', nprocs=4, block='64m')
 
         # Get delegate
         delegate = pkg_instance._get_delegate('default')

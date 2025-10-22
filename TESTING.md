@@ -128,7 +128,7 @@ The test container can be integrated into CI/CD pipelines:
 ```yaml
 # Example GitLab CI
 test:
-  image: iowarp/iowarp-deps:latest
+  image: iowarp/iowarp-deps:ai
   script:
     - source /opt/spack/share/spack/setup-env.sh
     - spack load mpi

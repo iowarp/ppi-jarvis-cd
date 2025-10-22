@@ -4,56 +4,13 @@ Ior is a benchmark tool for measuring the performance of I/O systems.
 It is a simple tool that can be used to measure the performance of a file system.
 It is mainly targeted for HPC systems and parallel I/O.
 """
-from jarvis_cd.core.pkg import Application
+from jarvis_cd.core.route_pkg import RouteApp
 
 
-class Ior(Application):
+class Ior(RouteApp):
     """
     Router class for IOR deployment - delegates to default or container implementation.
     """
-
-    def __new__(cls, pipeline=None):
-        """
-        Factory method to create the appropriate IOR implementation based on deploy parameter.
-
-        :param pipeline: Pipeline instance
-        :return: IorDefault or IorContainer instance
-        """
-        # If we're being called with a specific subclass, use normal instantiation
-        if cls is not Ior:
-            instance = super(Application, cls).__new__(cls)
-            return instance
-
-        # For the base Ior class, we need to determine which implementation to use
-        # However, at __new__ time we don't have access to the config yet
-        # So we'll use normal instantiation and handle routing in __init__
-        instance = super(Application, cls).__new__(cls)
-        return instance
-
-    def __init__(self, pipeline=None):
-        """
-        Initialize the router and delegate to appropriate implementation.
-
-        :param pipeline: Pipeline instance
-        """
-        # Check if this is already a delegated instance
-        if self.__class__ is not Ior:
-            super().__init__(pipeline=pipeline)
-            return
-
-        # Store pipeline temporarily to access config
-        self._temp_pipeline = pipeline
-
-        # Initialize with default implementation first
-        super().__init__(pipeline=pipeline)
-
-        # Now check config to determine if we should delegate
-        # This will be set during configure
-        self._delegate = None
-
-    def _init(self):
-        """Initialize paths"""
-        pass
 
     def _configure_menu(self):
         """
@@ -148,63 +105,22 @@ class Ior(Application):
         # Combine base menu with IOR-specific menu
         return base_menu + ior_menu
 
-    def _configure(self, **kwargs):
+    def _get_deploy_mode(self) -> str:
         """
-        Configure the appropriate implementation.
+        Get deploy mode and map old deploy values to deploy_mode.
+        Maps 'docker' and 'podman' to 'container'.
 
-        :param kwargs: Configuration parameters
-        :return: None
+        :return: Deploy mode string
         """
-        # Call parent to set config
-        super()._configure(**kwargs)
+        # Check pipeline deploy_mode first
+        if hasattr(self.pipeline, 'deploy_mode') and self.pipeline.deploy_mode:
+            deploy_mode = self.pipeline.deploy_mode
+        else:
+            # Fall back to package config - check both old 'deploy' and new 'deploy_mode'
+            deploy_mode = self.config.get('deploy_mode') or self.config.get('deploy', 'default')
 
-        # Determine deploy mode (map docker/podman to container)
-        deploy_mode = self.config.get('deploy', 'default')
+        # Map old docker/podman values to container
         if deploy_mode in ['docker', 'podman']:
             deploy_mode = 'container'
 
-        # Delegate to appropriate implementation
-        delegate = self._get_delegate(deploy_mode)
-        delegate._configure(**kwargs)
-
-    def start(self):
-        """
-        Start IOR using the appropriate implementation.
-
-        :return: None
-        """
-        # Determine deploy mode (map docker/podman to container)
-        deploy_mode = self.config.get('deploy', 'default')
-        if deploy_mode in ['docker', 'podman']:
-            deploy_mode = 'container'
-
-        delegate = self._get_delegate(deploy_mode)
-        delegate.start()
-
-    def stop(self):
-        """
-        Stop IOR using the appropriate implementation.
-
-        :return: None
-        """
-        # Determine deploy mode (map docker/podman to container)
-        deploy_mode = self.config.get('deploy', 'default')
-        if deploy_mode in ['docker', 'podman']:
-            deploy_mode = 'container'
-
-        delegate = self._get_delegate(deploy_mode)
-        delegate.stop()
-
-    def clean(self):
-        """
-        Clean IOR data using the appropriate implementation.
-
-        :return: None
-        """
-        # Determine deploy mode (map docker/podman to container)
-        deploy_mode = self.config.get('deploy', 'default')
-        if deploy_mode in ['docker', 'podman']:
-            deploy_mode = 'container'
-
-        delegate = self._get_delegate(deploy_mode)
-        delegate.clean()
+        return deploy_mode

@@ -171,8 +171,9 @@ class PodmanComposeExec(CoreExec):
             cmd = f"podman-compose -f {self.compose_file} {self.action}"
         else:
             cmd = f"podman compose -f {self.compose_file} {self.action}"
+        # For 'up', add flags to show output and exit when container stops
         if self.action == 'up':
-            cmd += " -d"
+            cmd += " --abort-on-container-exit"
         return cmd
 
     def run(self):
@@ -213,8 +214,9 @@ class DockerComposeExec(CoreExec):
     def get_cmd(self) -> str:
         """Get the docker compose command string"""
         cmd = f"docker compose -f {self.compose_file} {self.action}"
+        # For 'up', add flags to show output and exit when container stops
         if self.action == 'up':
-            cmd += " -d"
+            cmd += " --abort-on-container-exit"
         return cmd
 
     def run(self):

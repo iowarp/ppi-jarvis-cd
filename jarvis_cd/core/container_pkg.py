@@ -82,11 +82,15 @@ class ContainerApplication(Application):
         Get the command to run in the container.
         Subclasses can override this to provide application-specific startup commands.
 
+        Note: This method is deprecated for pipeline-level containers.
+        Use pipeline.container_ssh_port instead.
+
         :return: List representing the container command
         """
-        ssh_port = self.config.get('deploy_ssh_port', 2222)
+        # Use pipeline-level SSH port if available, otherwise fallback to default
+        ssh_port = getattr(self.pipeline, 'container_ssh_port', 2222)
 
-        # Default command: setup SSH and keep container running
+        # Default command: setup SSH, start sshd, run pipeline, and keep container running
         return [
             f'cp -r /root/.ssh_host /root/.ssh && '
             f'chmod 700 /root/.ssh && '
@@ -97,7 +101,10 @@ class ContainerApplication(Application):
             f'echo "    Port {ssh_port}" >> /root/.ssh/config && '
             f'echo "    StrictHostKeyChecking no" >> /root/.ssh/config && '
             f'chmod 600 /root/.ssh/config && '
-            f'/usr/sbin/sshd && tail -f /dev/null'
+            f'sed -i "s/^#*Port .*/Port {ssh_port}/" /etc/ssh/sshd_config && '
+            f'/usr/sbin/sshd && '
+            f'jarvis ppl run yaml /root/.ppi-jarvis/shared/pkg.yaml && '
+            f'tail -f /dev/null'
         ]
 
     def _get_service_name(self):
@@ -129,7 +136,6 @@ class ContainerApplication(Application):
         compose_config = {
             'services': {
                 service_name: {
-                    'build': str(self.shared_dir),
                     'container_name': container_name,
                     'entrypoint': ['/bin/bash', '-c'],
                     'command': self._get_container_command(),
@@ -141,6 +147,12 @@ class ContainerApplication(Application):
                 }
             }
         }
+
+        # Use global container image if pipeline has container_name, otherwise build from local Dockerfile
+        if hasattr(self.pipeline, 'container_name') and self.pipeline.container_name:
+            compose_config['services'][service_name]['image'] = self.pipeline.container_name
+        else:
+            compose_config['services'][service_name]['build'] = str(self.shared_dir)
 
         # Always use host network mode for multi-node MPI support
         compose_config['services'][service_name]['network_mode'] = 'host'
@@ -167,98 +179,47 @@ class ContainerApplication(Application):
     def _build_image(self):
         """
         Build the container image using compose build.
+        Note: This is no longer used for per-package builds. Container building happens at pipeline level.
 
         :return: None
         """
-        compose_file = Path(self.shared_dir) / 'compose.yaml'
-
-        if not compose_file.exists():
-            raise FileNotFoundError(f"Compose file not found: {compose_file}")
-
-        # Determine container runtime from config
-        prefer_podman = (self.config.get('deploy') == 'podman')
-
-        # Build the image
-        print(f"Building container image from {compose_file}")
-        ContainerBuildExec(
-            str(compose_file),
-            LocalExecInfo(env=self.mod_env),
-            prefer_podman=prefer_podman
-        ).run()
-        print("Container image built successfully")
+        pass
 
     def start(self):
         """
-        Start the container using compose, then execute jarvis ppl start inside it.
+        Start is handled at the pipeline level for containerized applications.
+        Individual packages do not start containers themselves.
 
         :return: None
         """
-        compose_file = Path(self.shared_dir) / 'compose.yaml'
-
-        if not compose_file.exists():
-            raise FileNotFoundError(f"Compose file not found: {compose_file}. Run configure first.")
-
-        # Determine container runtime from config
-        prefer_podman = (self.config.get('deploy') == 'podman')
-
-        # Execute compose up (will automatically use -d flag for detached mode)
-        ContainerComposeExec(
-            str(compose_file),
-            LocalExecInfo(env=self.mod_env),
-            action='up',
-            prefer_podman=prefer_podman
-        ).run()
-
-        # Get container name
-        container_name = f"{self.pipeline.name}_{self.pkg_id}"
-
-        # Execute jarvis ppl start inside the container
-        print(f"Executing 'jarvis ppl start' inside container {container_name}")
-        ContainerExec(
-            container_name,
-            "jarvis ppl start",
-            LocalExecInfo(env=self.mod_env),
-            prefer_podman=prefer_podman
-        ).run()
+        pass
 
     def stop(self):
         """
-        Stop the container.
+        Stop is handled at the pipeline level for containerized applications.
+        Individual packages do not stop containers themselves.
 
         :return: None
         """
-        compose_file = Path(self.shared_dir) / 'compose.yaml'
-
-        if not compose_file.exists():
-            print(f"Compose file not found: {compose_file}")
-            return
-
-        # Determine container runtime from config
-        prefer_podman = (self.config.get('deploy') == 'podman')
-
-        # Execute compose down
-        ContainerComposeExec(
-            str(compose_file),
-            LocalExecInfo(env=self.mod_env),
-            action='down',
-            prefer_podman=prefer_podman
-        ).run()
+        pass
 
     def clean(self):
         """
-        Clean container data.
+        Clean is handled at the pipeline level for containerized applications.
+        Individual packages do not clean containers themselves.
 
         :return: None
         """
-        # Stop containers first
-        self.stop()
+        pass
 
-        # Remove generated files from shared directory
-        for filename in ['pkg.yaml', 'Dockerfile', 'compose.yaml']:
-            filepath = Path(self.shared_dir) / filename
-            if filepath.exists():
-                filepath.unlink()
-                print(f"Removed {filepath}")
+    def kill(self):
+        """
+        Kill is handled at the pipeline level for containerized applications.
+        Individual packages do not kill containers themselves.
+
+        :return: None
+        """
+        pass
 
 
 class ContainerService(ContainerApplication):

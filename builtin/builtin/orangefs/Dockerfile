@@ -1,4 +1,4 @@
-FROM iowarp/iowarp-deps:latest
+FROM iowarp/iowarp-deps:ai
 
 # Set non-interactive frontend to avoid prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,16 +16,16 @@ ENV DEBIAN_FRONTEND=dialog
 
 # SCSPKG + lmod
 RUN echo $'\n\
-if ! shopt -q login_shell; then\n\
+    if ! shopt -q login_shell; then\n\
     if [ -d /etc/profile.d ]; then\n\
-        for i in /etc/profile.d/*.sh; do\n\
-            if [ -r $i ]; then\n\
-                . $i\n\
-            fi\n\
-        done\n\
+    for i in /etc/profile.d/*.sh; do\n\
+    if [ -r $i ]; then\n\
+    . $i\n\
     fi\n\
-fi\n\
-' >> /root/.bashrc
+    done\n\
+    fi\n\
+    fi\n\
+    ' >> /root/.bashrc
 RUN . "${SPACK_DIR}/share/spack/setup-env.sh" && \
     spack load iowarp && \
     echo "module use $(scspkg module dir)" >> /root/.bashrc && \

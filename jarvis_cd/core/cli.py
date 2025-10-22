@@ -183,7 +183,32 @@ class JarvisCLI(ArgParse):
         
         self.add_cmd('ppl print', msg="Print current pipeline configuration")
         self.add_args([])
-        
+
+        self.add_cmd('ppl path', msg="Print pipeline directory paths")
+        self.add_args([
+            {
+                'name': 'shared',
+                'msg': 'Print only shared directory',
+                'type': bool,
+                'default': False,
+                'prefix': '+'
+            },
+            {
+                'name': 'private',
+                'msg': 'Print only private directory',
+                'type': bool,
+                'default': False,
+                'prefix': '+'
+            },
+            {
+                'name': 'config',
+                'msg': 'Print only config directory',
+                'type': bool,
+                'default': False,
+                'prefix': '+'
+            }
+        ])
+
         self.add_cmd('ppl rm', msg="Remove a package from current pipeline", aliases=['ppl remove'])
         self.add_args([
             {
@@ -390,46 +415,25 @@ class JarvisCLI(ArgParse):
                 'pos': True
             },
             {
-                'name': 'conf',
-                'msg': 'Show config.yaml path',
+                'name': 'shared',
+                'msg': 'Print only shared directory',
                 'type': bool,
-                'default': False
+                'default': False,
+                'prefix': '+'
             },
             {
-                'name': 'env',
-                'msg': 'Show env.yaml path',
+                'name': 'private',
+                'msg': 'Print only private directory',
                 'type': bool,
-                'default': False
+                'default': False,
+                'prefix': '+'
             },
             {
-                'name': 'mod_env',
-                'msg': 'Show mod_env.yaml path',
+                'name': 'config',
+                'msg': 'Print only config directory',
                 'type': bool,
-                'default': False
-            },
-            {
-                'name': 'conf_dir',
-                'msg': 'Show config directory path',
-                'type': bool,
-                'default': False
-            },
-            {
-                'name': 'shared_dir',
-                'msg': 'Show shared directory path',
-                'type': bool,
-                'default': False
-            },
-            {
-                'name': 'priv_dir',
-                'msg': 'Show private directory path',
-                'type': bool,
-                'default': False
-            },
-            {
-                'name': 'pkg_dir',
-                'msg': 'Show package source directory path',
-                'type': bool,
-                'default': False
+                'default': False,
+                'prefix': '+'
             }
         ])
 
@@ -972,6 +976,7 @@ class JarvisCLI(ArgParse):
 
         pipeline = Pipeline()
         pipeline.load(load_type, pipeline_file)
+        pipeline.build_container_if_needed()
         pipeline.configure_all_packages()
 
         self.current_pipeline = pipeline
@@ -991,6 +996,7 @@ class JarvisCLI(ArgParse):
         # For update, we need to reload from the last loaded file
         if hasattr(self.current_pipeline, 'last_loaded_file') and self.current_pipeline.last_loaded_file:
             self.current_pipeline.load(update_type, self.current_pipeline.last_loaded_file)
+            self.current_pipeline.build_container_if_needed()
             self.current_pipeline.configure_all_packages()
         else:
             raise ValueError("No pipeline file to update from")
@@ -1059,7 +1065,14 @@ class JarvisCLI(ArgParse):
         
         print(f"Pipeline: {self.current_pipeline.name}")
         print(f"Directory: {self.jarvis_config.get_pipeline_dir(current_pipeline_name)}")
-        
+
+        # Show container configuration if set
+        if hasattr(self.current_pipeline, 'container_name') and self.current_pipeline.container_name:
+            print(f"Container Configuration:")
+            print(f"  Name: {self.current_pipeline.container_name}")
+            print(f"  Engine: {self.current_pipeline.container_engine}")
+            print(f"  Base: {self.current_pipeline.container_base}")
+
         if self.current_pipeline.packages:
             print("Packages:")
             for pkg_def in self.current_pipeline.packages:
@@ -1101,10 +1114,44 @@ class JarvisCLI(ArgParse):
                     print("    Configuration: None")
         else:
             print("No interceptors in pipeline")
-                
+
         if hasattr(self.current_pipeline, 'last_loaded_file') and self.current_pipeline.last_loaded_file:
             print(f"Last loaded from: {self.current_pipeline.last_loaded_file}")
-        
+
+    def ppl_path(self):
+        """Print pipeline directory paths"""
+        self._ensure_initialized()
+
+        current_pipeline_name = self.jarvis_config.get_current_pipeline()
+
+        if not current_pipeline_name:
+            print("No current pipeline set. Use 'jarvis cd <pipeline>' to switch.", file=sys.stderr)
+            sys.exit(1)
+
+        # Get directories
+        config_dir = self.jarvis_config.get_pipeline_dir(current_pipeline_name)
+        shared_dir = self.jarvis_config.get_pipeline_shared_dir(current_pipeline_name)
+        private_dir = self.jarvis_config.get_pipeline_private_dir(current_pipeline_name)
+
+        # Check which flags are set
+        show_shared = self.kwargs.get('shared', False)
+        show_private = self.kwargs.get('private', False)
+        show_config = self.kwargs.get('config', False)
+
+        # If no flags set, show all directories
+        if not (show_shared or show_private or show_config):
+            print(f"config:  {config_dir}")
+            print(f"shared:  {shared_dir}")
+            print(f"private: {private_dir}")
+        else:
+            # Show only requested directory (single line, no label)
+            if show_config:
+                print(config_dir)
+            elif show_shared:
+                print(shared_dir)
+            elif show_private:
+                print(private_dir)
+
     def ppl_rm(self):
         """Remove package from current pipeline"""
         self._ensure_initialized()
@@ -1201,14 +1248,14 @@ class JarvisCLI(ArgParse):
 
     def container_list(self):
         """List all container images"""
-        self._ensure_config_loaded()
+        self._ensure_initialized()
         from jarvis_cd.core.container import ContainerManager
         container_manager = ContainerManager()
         container_manager.list_containers()
 
     def container_remove(self):
         """Remove a container image"""
-        self._ensure_config_loaded()
+        self._ensure_initialized()
         container_name = self.kwargs['container_name']
         from jarvis_cd.core.container import ContainerManager
         container_manager = ContainerManager()
@@ -1291,18 +1338,14 @@ class JarvisCLI(ArgParse):
         """Show package directory paths"""
         self._ensure_initialized()
         package_spec = self.kwargs['package_spec']
-        
+
         # Get the requested paths
         path_flags = {
-            'conf': self.kwargs.get('conf', False),
-            'env': self.kwargs.get('env', False),
-            'mod_env': self.kwargs.get('mod_env', False),
-            'conf_dir': self.kwargs.get('conf_dir', False),
-            'shared_dir': self.kwargs.get('shared_dir', False),
-            'priv_dir': self.kwargs.get('priv_dir', False),
-            'pkg_dir': self.kwargs.get('pkg_dir', False)
+            'shared': self.kwargs.get('shared', False),
+            'private': self.kwargs.get('private', False),
+            'config': self.kwargs.get('config', False)
         }
-        
+
         # Parse package specification
         if '.' in package_spec:
             # Check if it's a pipeline.pkg or repo.pkg format
@@ -1312,7 +1355,7 @@ class JarvisCLI(ArgParse):
                 # Try to determine based on whether it's an existing pipeline
                 potential_pipeline = parts[0]
                 pipeline_dir = self.jarvis_config.get_pipeline_dir(potential_pipeline)
-                
+
                 if pipeline_dir.exists():
                     # It's a pipeline.pkg format
                     pipeline_name, pkg_id = parts
@@ -1335,7 +1378,7 @@ class JarvisCLI(ArgParse):
                 if not self.current_pipeline:
                     current_name = self.jarvis_config.get_current_pipeline()
                     self.current_pipeline = Pipeline(current_name)
-                
+
                 try:
                     self.current_pipeline.show_package_paths(package_spec, path_flags)
                 except ValueError:
@@ -1384,6 +1427,7 @@ class JarvisCLI(ArgParse):
                     self.current_pipeline.env = yaml.safe_load(f)
 
             # Reconfigure all packages with the new environment
+            self.current_pipeline.build_container_if_needed()
             self.current_pipeline.configure_all_packages()
             print("Pipeline reconfigured with new environment")
         
