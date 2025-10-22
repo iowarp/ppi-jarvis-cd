@@ -190,8 +190,39 @@ class JarvisCLI(ArgParse):
             }
         ])
 
-        self.add_cmd('ppl conf', msg="Configure pipeline parameters", keep_remainder=True)
-        self.add_args([])
+        self.add_cmd('ppl conf', msg="Configure pipeline parameters")
+        self.add_args([
+            {
+                'name': 'hostfile',
+                'msg': 'Path to pipeline-specific hostfile',
+                'type': str,
+                'default': None,
+            },
+            {
+                'name': 'container_name',
+                'msg': 'Container name',
+                'type': str,
+                'default': None,
+            },
+            {
+                'name': 'container_engine',
+                'msg': 'Container engine (docker/podman)',
+                'type': str,
+                'default': None,
+            },
+            {
+                'name': 'container_base',
+                'msg': 'Base container image',
+                'type': str,
+                'default': None,
+            },
+            {
+                'name': 'container_ssh_port',
+                'msg': 'SSH port for containers',
+                'type': int,
+                'default': None,
+            }
+        ])
 
         self.add_cmd('ppl list', msg="List all pipelines", aliases=['ppl ls'])
         self.add_args([])
@@ -1047,51 +1078,48 @@ class JarvisCLI(ArgParse):
             else:
                 raise ValueError("No current pipeline to configure")
 
-        # Parse key=value pairs from remainder
-        import shlex
-        remainder = self.kwargs.get('remainder', [])
-        if isinstance(remainder, str):
-            remainder = shlex.split(remainder)
-
-        if not remainder:
-            print("Usage: jarvis ppl conf key=value [key=value...]")
-            print("Available parameters:")
-            print("  hostfile=<path>         - Set pipeline-specific hostfile")
-            print("  container_name=<name>   - Set container name")
-            print("  container_engine=<name> - Set container engine (docker/podman)")
-            print("  container_base=<image>  - Set base container image")
-            return
-
-        # Parse parameters
-        params = {}
-        for arg in remainder:
-            if '=' not in arg:
-                print(f"Invalid parameter format: {arg} (expected key=value)")
-                continue
-            key, value = arg.split('=', 1)
-            params[key] = value
-
-        # Update pipeline parameters
+        # Check if any parameters were provided
+        params_provided = False
         needs_rebuild = False
-        for key, value in params.items():
-            if key == 'hostfile':
-                from jarvis_cd.util.hostfile import Hostfile
-                self.current_pipeline.hostfile = Hostfile(path=value)
-                print(f"Set pipeline hostfile: {value}")
-                needs_rebuild = True
-            elif key == 'container_name':
-                self.current_pipeline.container_name = value
-                print(f"Set container_name: {value}")
-                needs_rebuild = True
-            elif key == 'container_engine':
-                self.current_pipeline.container_engine = value
-                print(f"Set container_engine: {value}")
-            elif key == 'container_base':
-                self.current_pipeline.container_base = value
-                print(f"Set container_base: {value}")
-                needs_rebuild = True
-            else:
-                print(f"Unknown parameter: {key}")
+
+        # Update hostfile
+        if self.kwargs.get('hostfile') is not None:
+            from jarvis_cd.util.hostfile import Hostfile
+            hostfile_path = self.kwargs['hostfile']
+            self.current_pipeline.hostfile = Hostfile(path=hostfile_path)
+            print(f"Set pipeline hostfile: {hostfile_path}")
+            params_provided = True
+            needs_rebuild = True
+
+        # Update container_name
+        if self.kwargs.get('container_name') is not None:
+            self.current_pipeline.container_name = self.kwargs['container_name']
+            print(f"Set container_name: {self.kwargs['container_name']}")
+            params_provided = True
+            needs_rebuild = True
+
+        # Update container_engine
+        if self.kwargs.get('container_engine') is not None:
+            self.current_pipeline.container_engine = self.kwargs['container_engine']
+            print(f"Set container_engine: {self.kwargs['container_engine']}")
+            params_provided = True
+
+        # Update container_base
+        if self.kwargs.get('container_base') is not None:
+            self.current_pipeline.container_base = self.kwargs['container_base']
+            print(f"Set container_base: {self.kwargs['container_base']}")
+            params_provided = True
+            needs_rebuild = True
+
+        # Update container_ssh_port
+        if self.kwargs.get('container_ssh_port') is not None:
+            self.current_pipeline.container_ssh_port = self.kwargs['container_ssh_port']
+            print(f"Set container_ssh_port: {self.kwargs['container_ssh_port']}")
+            params_provided = True
+
+        if not params_provided:
+            print("No parameters provided. Use -h to see available options.")
+            return
 
         # Save pipeline
         self.current_pipeline.save()
