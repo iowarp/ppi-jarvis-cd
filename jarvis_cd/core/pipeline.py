@@ -37,6 +37,7 @@ class Pipeline:
         self.container_engine = "podman"  # Default container engine
         self.container_base = "iowarp/iowarp-deps:ai"  # Base image
         self.container_ssh_port = 2222  # Default SSH port for containers
+        self.container_extensions = {}  # Custom extensions to Docker compose file
 
         # Load existing pipeline if name is provided
         if name:
@@ -123,6 +124,8 @@ class Pipeline:
         pipeline_config['container_engine'] = self.container_engine
         pipeline_config['container_base'] = self.container_base
         pipeline_config['container_ssh_port'] = self.container_ssh_port
+        if self.container_extensions:
+            pipeline_config['container_extensions'] = self.container_extensions
 
         # Convert packages to script format (pkg_type + config parameters)
         for pkg in self.packages:
@@ -784,6 +787,7 @@ class Pipeline:
         self.container_engine = pipeline_config.get('container_engine', 'podman')
         self.container_base = pipeline_config.get('container_base', 'iowarp/iowarp-deps:ai')
         self.container_ssh_port = pipeline_config.get('container_ssh_port', 2222)
+        self.container_extensions = pipeline_config.get('container_extensions', {})
 
         # Initialize packages and interceptors
         self.packages = []
@@ -897,6 +901,7 @@ class Pipeline:
         self.container_engine = pipeline_def.get('container_engine', 'podman')
         self.container_base = pipeline_def.get('container_base', 'iowarp/iowarp-deps:ai')
         self.container_ssh_port = pipeline_def.get('container_ssh_port', 2222)
+        self.container_extensions = pipeline_def.get('container_extensions', {})
 
         # Debug output
         print(f"DEBUG: Loaded container_name='{self.container_name}'")
@@ -1642,24 +1647,14 @@ services:
             }
         }
 
-        # Add GPU configuration based on container engine
-        if self.container_engine.lower() == 'docker':
-            # Docker Compose format for GPU
-            service_config['deploy'] = {
-                'resources': {
-                    'reservations': {
-                        'devices': [
-                            {
-                                'driver': 'nvidia',
-                                'count': 'all',
-                                'capabilities': ['gpu', 'compute', 'utility']
-                            }
-                        ]
-                    }
-                }
-            }
-        # Podman doesn't use deploy/resources - GPU access works via --device which
-        # is handled at runtime, not in compose file
+        # Note: GPU configuration is not included by default
+        # If GPU access is needed, users should add it to their pipeline configuration
+        # or use host network mode which provides direct device access
+
+        # Apply container extensions from pipeline configuration
+        if self.container_extensions:
+            # Deep merge container_extensions into service_config
+            self._merge_dict(service_config, self.container_extensions)
 
         compose_config = {
             'services': {
@@ -1673,6 +1668,29 @@ services:
 
         print(f"Generated docker-compose file: {compose_path}")
         return compose_path
+
+    def _merge_dict(self, target: dict, source: dict):
+        """
+        Deep merge source dictionary into target dictionary.
+        Lists are extended, dictionaries are recursively merged.
+
+        :param target: Target dictionary to merge into
+        :param source: Source dictionary to merge from
+        """
+        for key, value in source.items():
+            if key in target:
+                if isinstance(target[key], dict) and isinstance(value, dict):
+                    # Recursively merge nested dictionaries
+                    self._merge_dict(target[key], value)
+                elif isinstance(target[key], list) and isinstance(value, list):
+                    # Extend lists
+                    target[key].extend(value)
+                else:
+                    # Override value
+                    target[key] = value
+            else:
+                # Add new key
+                target[key] = value
 
     def _start_containerized_pipeline(self):
         """

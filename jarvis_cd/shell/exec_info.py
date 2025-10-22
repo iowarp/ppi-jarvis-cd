@@ -58,11 +58,8 @@ class ExecInfo:
         :param stdin: Any input needed by the program. Only local
         :param strict_ssh: Strict ssh host key verification
         :param timeout: Timeout subprocess within timeframe
-        :param kwargs: Additional unknown parameters (silently ignored for backward compatibility)
+        :param kwargs: Additional unknown parameters (silently ignored)
         """
-        # Silently ignore unknown kwargs for backward compatibility
-        # (e.g., do_dbg, dbg_port from old saved pipelines)
-
         self.exec_type = exec_type
         self.nprocs = nprocs or 1
         self.ppn = ppn

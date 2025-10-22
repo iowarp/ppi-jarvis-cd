@@ -11,38 +11,29 @@ class RouteApp(Application):
     Base class for routed application deployment.
 
     This class provides automatic delegation of lifecycle methods (start, stop, status, kill, clean)
-    to implementation-specific subclasses based on the deploy mode configuration.
+    to implementation-specific subclasses based on the deploy_mode configuration parameter.
 
     Subclasses should:
-    1. Override _configure_menu() to define package-specific parameters
-    2. Override _get_deploy_mode() if custom deploy mode mapping is needed
-    3. Implement specific deployment classes (e.g., MyAppDefault, MyAppContainer)
+    1. Override _configure_menu() to define package-specific parameters and available deploy modes
+    2. Implement specific deployment classes (e.g., MyAppDefault, MyAppContainer)
     """
 
     def _configure_menu(self) -> List[Dict[str, Any]]:
         """
-        Get the configuration menu for deploy parameters.
+        Get the configuration menu including deploy_mode parameter.
+        Subclasses should override this to specify available deployment modes.
 
         :return: List of configuration option dictionaries
         """
-        return []
-
-    def _get_deploy_mode(self) -> str:
-        """
-        Get the deploy mode from pipeline or config and map it to delegate class name.
-        Pipeline deploy_mode takes precedence over package config.
-        Subclasses can override this to provide custom mapping logic.
-
-        :return: Deploy mode string (e.g., 'default', 'container')
-        """
-        # Check pipeline deploy_mode first
-        if hasattr(self.pipeline, 'deploy_mode') and self.pipeline.deploy_mode:
-            deploy_mode = self.pipeline.deploy_mode
-        else:
-            # Fall back to package config
-            deploy_mode = self.config.get('deploy_mode', 'default')
-
-        return deploy_mode
+        return [
+            {
+                'name': 'deploy_mode',
+                'msg': 'Deployment mode',
+                'type': str,
+                'default': 'default',
+                'choices': ['default'],  # Subclasses should override with actual choices
+            }
+        ]
 
     def _configure(self, **kwargs):
         """
@@ -55,7 +46,7 @@ class RouteApp(Application):
         super()._configure(**kwargs)
 
         # Delegate to appropriate implementation
-        deploy_mode = self._get_deploy_mode()
+        deploy_mode = self.config.get('deploy_mode', 'default')
         delegate = self._get_delegate(deploy_mode)
         delegate._configure(**kwargs)
 
@@ -65,7 +56,7 @@ class RouteApp(Application):
 
         :return: None
         """
-        deploy_mode = self._get_deploy_mode()
+        deploy_mode = self.config.get('deploy_mode', 'default')
         delegate = self._get_delegate(deploy_mode)
         delegate.start()
 
@@ -75,7 +66,7 @@ class RouteApp(Application):
 
         :return: None
         """
-        deploy_mode = self._get_deploy_mode()
+        deploy_mode = self.config.get('deploy_mode', 'default')
         delegate = self._get_delegate(deploy_mode)
         delegate.stop()
 
@@ -85,7 +76,7 @@ class RouteApp(Application):
 
         :return: Status information
         """
-        deploy_mode = self._get_deploy_mode()
+        deploy_mode = self.config.get('deploy_mode', 'default')
         delegate = self._get_delegate(deploy_mode)
         return delegate.status()
 
@@ -95,7 +86,7 @@ class RouteApp(Application):
 
         :return: None
         """
-        deploy_mode = self._get_deploy_mode()
+        deploy_mode = self.config.get('deploy_mode', 'default')
         delegate = self._get_delegate(deploy_mode)
         delegate.kill()
 
@@ -105,7 +96,7 @@ class RouteApp(Application):
 
         :return: None
         """
-        deploy_mode = self._get_deploy_mode()
+        deploy_mode = self.config.get('deploy_mode', 'default')
         delegate = self._get_delegate(deploy_mode)
         delegate.clean()
 
@@ -116,7 +107,7 @@ class RouteApp(Application):
 
         :return: Dockerfile commands as a string
         """
-        deploy_mode = self._get_deploy_mode()
+        deploy_mode = self.config.get('deploy_mode', 'default')
         delegate = self._get_delegate(deploy_mode)
 
         # Check if delegate has augment_container method

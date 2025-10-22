@@ -335,8 +335,14 @@ class Ior(RouteApp):
 
         :return: List of configuration dictionaries
         """
-        # Get base menu from RouteApp (includes interceptors and deploy_mode)
+        # Get base menu from RouteApp (includes deploy_mode parameter)
         base_menu = super()._configure_menu()
+
+        # Override deploy_mode choices to specify available deployment modes for this package
+        for item in base_menu:
+            if item['name'] == 'deploy_mode':
+                item['choices'] = ['default', 'container']
+                break
 
         # Add package-specific parameters
         ior_menu = [
@@ -368,32 +374,15 @@ class Ior(RouteApp):
         ]
 
         return base_menu + ior_menu
-
-    def _get_deploy_mode(self) -> str:
-        """
-        Get deploy mode and optionally map old values to new values.
-
-        :return: Deploy mode string
-        """
-        # Check pipeline deploy_mode first (pipeline-level setting)
-        if hasattr(self.pipeline, 'deploy_mode') and self.pipeline.deploy_mode:
-            deploy_mode = self.pipeline.deploy_mode
-        else:
-            # Fall back to package-level deploy_mode config
-            deploy_mode = self.config.get('deploy_mode', 'default')
-
-        # Optional: Map old values to new values for backwards compatibility
-        if deploy_mode in ['docker', 'podman']:
-            deploy_mode = 'container'
-
-        return deploy_mode
 ```
 
 **Key Points:**
 - Router class name matches package name (e.g., `Ior` for `builtin.ior`)
-- Only implements `_configure_menu()` and optionally `_get_deploy_mode()`
+- Only implements `_configure_menu()` to define parameters and available deployment modes
+- Overrides `deploy_mode` choices to specify which deployment modes are supported (e.g., `['default', 'container']`)
 - All lifecycle methods (`start`, `stop`, `clean`, `kill`, `status`) are automatically delegated
 - Configuration menu is shared across all deployment modes
+- The `deploy_mode` parameter defaults to `'default'` and is automatically included in the configuration menu
 
 #### Default Implementation (`default.py`)
 
@@ -531,10 +520,15 @@ The `deploy_mode` parameter determines which implementation delegate is used:
 | Custom | `{PackageName}{CustomMode}` | `{custom_mode}.py` |
 
 **Routing Logic:**
-1. Router calls `_get_deploy_mode()` to determine deployment mode
+1. Router reads `deploy_mode` from `self.config['deploy_mode']` (defaults to `'default'`)
 2. Router constructs delegate class name: `f"{PackageName}{DeployMode.title()}"`
 3. Router imports and instantiates delegate from appropriate file
 4. Router forwards lifecycle method calls to delegate
+
+**Configuration:**
+- The `deploy_mode` parameter is automatically included in the package configuration menu
+- Subclasses specify available modes by overriding the `choices` field
+- Users can see available deployment modes via `jarvis pkg conf --help`
 
 ### Deploy Mode Configuration
 
@@ -584,7 +578,9 @@ pkgs:
 
 ### Adding Multiple Deployment Modes
 
-To support additional deployment modes, simply add new implementation files:
+To support additional deployment modes:
+
+1. **Add the implementation file**:
 
 ```python
 # custom_mode.py
@@ -602,7 +598,24 @@ class IorCustomMode(Application):
         pass
 ```
 
-Then use it in pipeline YAML:
+2. **Update the router's configuration menu** to include the new choice:
+
+```python
+# pkg.py
+def _configure_menu(self):
+    base_menu = super()._configure_menu()
+
+    # Add new deployment mode to choices
+    for item in base_menu:
+        if item['name'] == 'deploy_mode':
+            item['choices'] = ['default', 'container', 'custom_mode']
+            break
+
+    # ... rest of menu ...
+    return base_menu + ior_menu
+```
+
+3. **Use it in pipeline YAML**:
 
 ```yaml
 pkgs:
@@ -615,9 +628,8 @@ pkgs:
 1. **Single Package Interface**: Users interact with one package regardless of deployment mode
 2. **No Code Duplication**: Configuration menu defined once in router class
 3. **Easy Maintenance**: Update deployment logic without changing package interface
-4. **Backwards Compatibility**: Map old configuration values to new modes
-5. **Flexible Deployment**: Mix deployment modes within single pipeline
-6. **Container Support**: Seamless integration with containerized deployments
+4. **Flexible Deployment**: Mix deployment modes within single pipeline
+5. **Container Support**: Seamless integration with containerized deployments
 
 ### Migration from Single-Implementation Packages
 

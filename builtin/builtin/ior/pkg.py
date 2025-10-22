@@ -18,8 +18,14 @@ class Ior(RouteApp):
 
         :return: List(dict)
         """
-        # Get base menu from Application (includes interceptors)
+        # Get base menu from RouteApp (includes deploy_mode)
         base_menu = super()._configure_menu()
+
+        # Override deploy_mode choices to show available deployment modes
+        for item in base_menu:
+            if item['name'] == 'deploy_mode':
+                item['choices'] = ['default', 'container']
+                break
 
         # Add all IOR parameters (shared by both default and container deployments)
         ior_menu = [
@@ -104,23 +110,3 @@ class Ior(RouteApp):
 
         # Combine base menu with IOR-specific menu
         return base_menu + ior_menu
-
-    def _get_deploy_mode(self) -> str:
-        """
-        Get deploy mode and map old deploy values to deploy_mode.
-        Maps 'docker' and 'podman' to 'container'.
-
-        :return: Deploy mode string
-        """
-        # Check pipeline deploy_mode first
-        if hasattr(self.pipeline, 'deploy_mode') and self.pipeline.deploy_mode:
-            deploy_mode = self.pipeline.deploy_mode
-        else:
-            # Fall back to package config - check both old 'deploy' and new 'deploy_mode'
-            deploy_mode = self.config.get('deploy_mode') or self.config.get('deploy', 'default')
-
-        # Map old docker/podman values to container
-        if deploy_mode in ['docker', 'podman']:
-            deploy_mode = 'container'
-
-        return deploy_mode
