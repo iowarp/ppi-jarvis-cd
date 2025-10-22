@@ -1,0 +1,34 @@
+# Pipeline: IOR Podman Container Test
+# Purpose: Test IOR deployment using Podman containers
+# Requirements: Podman installed, shared filesystem access
+# Expected Runtime: 2-5 minutes
+
+name: ior_podman_test
+
+# Auto-build environment from current shell
+# No env field - will capture current environment automatically
+
+# Container configuration
+container_name: ior_test_container_podman
+container_engine: podman
+container_base: docker.io/iowarp/iowarp-deps:ai
+
+pkgs:
+  # IOR benchmark with container deployment
+  - pkg_type: builtin.ior
+    pkg_name: ior_container
+    # Deployment mode: 'default' for bare metal, 'container' for containerized
+    deploy_mode: container
+    # IOR benchmark parameters
+    nprocs: 2
+    ppn: 2
+    block: 1G
+    xfer: 1M
+    api: posix
+    out: /tmp/ior_test_file
+    log: /tmp/ior_output.log
+    write: true
+    read: true
+    fpp: false
+    reps: 1
+    direct: false
