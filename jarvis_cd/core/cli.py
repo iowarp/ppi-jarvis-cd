@@ -1194,12 +1194,23 @@ class JarvisCLI(ArgParse):
         print(f"Pipeline: {self.current_pipeline.name}")
         print(f"Directory: {self.jarvis_config.get_pipeline_dir(current_pipeline_name)}")
 
+        # Show hostfile configuration
+        if hasattr(self.current_pipeline, 'hostfile') and self.current_pipeline.hostfile:
+            print(f"Hostfile: {self.current_pipeline.hostfile.path or '(in-memory)'}")
+            print(f"  Hosts: {', '.join(self.current_pipeline.hostfile.hosts)}")
+        else:
+            # Show that it falls back to jarvis global hostfile
+            jarvis_hostfile = self.jarvis.hostfile
+            print(f"Hostfile: (using global jarvis hostfile)")
+            print(f"  Hosts: {', '.join(jarvis_hostfile.hosts)}")
+
         # Show container configuration if set
         if hasattr(self.current_pipeline, 'container_name') and self.current_pipeline.container_name:
             print(f"Container Configuration:")
             print(f"  Name: {self.current_pipeline.container_name}")
             print(f"  Engine: {self.current_pipeline.container_engine}")
             print(f"  Base: {self.current_pipeline.container_base}")
+            print(f"  SSH Port: {self.current_pipeline.container_ssh_port}")
 
         if self.current_pipeline.packages:
             print("Packages:")
