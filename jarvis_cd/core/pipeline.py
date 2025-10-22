@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from jarvis_cd.core.config import JarvisConfig, load_class, Jarvis
 from jarvis_cd.util.logger import logger
+from jarvis_cd.util.hostfile import Hostfile
 
 
 class Pipeline:
@@ -39,10 +40,24 @@ class Pipeline:
         self.container_ssh_port = 2222  # Default SSH port for containers
         self.container_extensions = {}  # Custom extensions to Docker compose file
 
+        # Hostfile parameter (None means use global jarvis hostfile)
+        self.hostfile = None
+
         # Load existing pipeline if name is provided
         if name:
             self.load()
-    
+
+    def get_hostfile(self) -> Hostfile:
+        """
+        Get the effective hostfile for this pipeline.
+        Falls back to global jarvis hostfile if pipeline hostfile is not set.
+
+        :return: Hostfile object
+        """
+        if self.hostfile:
+            return self.hostfile
+        return self.jarvis.hostfile
+
     def create(self, pipeline_name: str):
         """
         Create a new pipeline.
@@ -126,6 +141,18 @@ class Pipeline:
         pipeline_config['container_ssh_port'] = self.container_ssh_port
         if self.container_extensions:
             pipeline_config['container_extensions'] = self.container_extensions
+
+        # Add hostfile parameter (save path if set, None means use global jarvis hostfile)
+        # For containerized pipelines, use the container-mounted path
+        if self.hostfile:
+            if self.container_name:
+                # In container, hostfile will be mounted at /root/.ppi-jarvis/hostfile
+                pipeline_config['hostfile'] = "/root/.ppi-jarvis/hostfile"
+            else:
+                # On host, use actual path
+                pipeline_config['hostfile'] = self.hostfile.path if self.hostfile.path else ""
+        else:
+            pipeline_config['hostfile'] = None
 
         # Convert packages to script format (pkg_type + config parameters)
         for pkg in self.packages:
@@ -789,6 +816,13 @@ class Pipeline:
         self.container_ssh_port = pipeline_config.get('container_ssh_port', 2222)
         self.container_extensions = pipeline_config.get('container_extensions', {})
 
+        # Load hostfile parameter (None means use global jarvis hostfile)
+        hostfile_path = pipeline_config.get('hostfile')
+        if hostfile_path:
+            self.hostfile = Hostfile(path=hostfile_path)
+        else:
+            self.hostfile = None
+
         # Initialize packages and interceptors
         self.packages = []
         self.interceptors = {}
@@ -902,6 +936,13 @@ class Pipeline:
         self.container_base = pipeline_def.get('container_base', 'iowarp/iowarp-deps:ai')
         self.container_ssh_port = pipeline_def.get('container_ssh_port', 2222)
         self.container_extensions = pipeline_def.get('container_extensions', {})
+
+        # Load hostfile parameter (None means use global jarvis hostfile)
+        hostfile_path = pipeline_def.get('hostfile')
+        if hostfile_path:
+            self.hostfile = Hostfile(path=hostfile_path)
+        else:
+            self.hostfile = None
 
         # Debug output
         print(f"DEBUG: Loaded container_name='{self.container_name}'")
@@ -1623,6 +1664,18 @@ services:
         # Create compose configuration using the global container image
         private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(self.name)
 
+        # Prepare volume mounts
+        volumes = [
+            f"{private_dir}:/root/.ppi-jarvis/private",
+            f"{shared_dir}:/root/.ppi-jarvis/shared",
+            f"{ssh_dir}:/root/.ssh_host:ro"
+        ]
+
+        # Add hostfile volume mount if hostfile is set
+        hostfile = self.get_hostfile()
+        if hostfile and hostfile.path:
+            volumes.append(f"{hostfile.path}:/root/.ppi-jarvis/hostfile:ro")
+
         service_config = {
             'container_name': container_name,
             'image': self.container_name,  # Use pre-built global image
@@ -1630,11 +1683,7 @@ services:
             'command': [container_cmd],
             'network_mode': 'host',
             'ipc': 'host',  # Share IPC namespace with host (removes shm limits)
-            'volumes': [
-                f"{private_dir}:/root/.ppi-jarvis/private",
-                f"{shared_dir}:/root/.ppi-jarvis/shared",
-                f"{ssh_dir}:/root/.ssh_host:ro"
-            ]
+            'volumes': volumes
         }
 
         # Note: GPU configuration is not included by default
@@ -1704,12 +1753,13 @@ services:
         prefer_podman = self.container_engine.lower() == 'podman'
 
         # Check if we have a hostfile
-        if not self.jarvis.hostfile:
+        hostfile = self.get_hostfile()
+        if not hostfile or len(hostfile) == 0:
             logger.warning("No hostfile found, deploying to localhost only")
             exec_info = LocalExecInfo()
         else:
             logger.info(f"Deploying containers to all nodes in hostfile")
-            exec_info = PsshExecInfo(hostfile=self.jarvis.hostfile)
+            exec_info = PsshExecInfo(hostfile=hostfile)
 
         # Start containers (uses pre-built image)
         ContainerComposeExec(str(compose_path), exec_info, action='up', prefer_podman=prefer_podman).run()
@@ -1734,12 +1784,13 @@ services:
         compose_path = shared_dir / 'docker-compose.yaml'
 
         # Check if we have a hostfile
-        if not self.jarvis.hostfile:
+        hostfile = self.get_hostfile()
+        if not hostfile or len(hostfile) == 0:
             logger.warning("No hostfile found, stopping on localhost only")
             exec_info = LocalExecInfo()
         else:
             logger.info(f"Stopping containers on all nodes in hostfile")
-            exec_info = PsshExecInfo(hostfile=self.jarvis.hostfile)
+            exec_info = PsshExecInfo(hostfile=hostfile)
 
         # Stop containers
         ContainerComposeExec(str(compose_path), exec_info, action='down', prefer_podman=prefer_podman).run()
@@ -1764,12 +1815,13 @@ services:
         compose_path = shared_dir / 'docker-compose.yaml'
 
         # Check if we have a hostfile
-        if not self.jarvis.hostfile:
+        hostfile = self.get_hostfile()
+        if not hostfile or len(hostfile) == 0:
             logger.warning("No hostfile found, force-killing on localhost only")
             exec_info = LocalExecInfo()
         else:
             logger.info(f"Force-killing containers on all nodes in hostfile")
-            exec_info = PsshExecInfo(hostfile=self.jarvis.hostfile)
+            exec_info = PsshExecInfo(hostfile=hostfile)
 
         # Kill and then remove containers
         ContainerComposeExec(str(compose_path), exec_info, action='kill', prefer_podman=prefer_podman).run()

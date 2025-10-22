@@ -10,6 +10,7 @@ import inspect
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from jarvis_cd.core.config import Jarvis, load_class
+from jarvis_cd.util.hostfile import Hostfile
 
 
 class Pkg:
@@ -118,7 +119,26 @@ class Pkg:
 
         # Set pkg_dir to the directory containing this package's source
         self._detect_pkg_dir()
-        
+
+    def get_hostfile(self) -> Hostfile:
+        """
+        Get the effective hostfile for this package.
+        Falls back to pipeline hostfile if package hostfile is not set.
+
+        :return: Hostfile object
+        """
+        # Check if package has a hostfile configured
+        hostfile_path = self.config.get('hostfile', '')
+        if hostfile_path:
+            return Hostfile(path=hostfile_path)
+
+        # Fall back to pipeline's hostfile
+        if hasattr(self.pipeline, 'get_hostfile'):
+            return self.pipeline.get_hostfile()
+
+        # Fall back to global jarvis hostfile
+        return self.jarvis.hostfile
+
     def _init(self):
         """
         Override this method to initialize package-specific variables.
@@ -213,9 +233,15 @@ class Pkg:
                 'msg': 'Hide command output',
                 'type': bool,
                 'default': False,
+            },
+            {
+                'name': 'hostfile',
+                'msg': 'Path to hostfile (empty string means use pipeline hostfile)',
+                'type': str,
+                'default': '',
             }
         ]
-        
+
         # Combine package-specific and common menus
         return package_menu + common_menu
 

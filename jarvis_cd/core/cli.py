@@ -189,7 +189,10 @@ class JarvisCLI(ArgParse):
                 'default': False
             }
         ])
-        
+
+        self.add_cmd('ppl conf', msg="Configure pipeline parameters", keep_remainder=True)
+        self.add_args([])
+
         self.add_cmd('ppl list', msg="List all pipelines", aliases=['ppl ls'])
         self.add_args([])
         
@@ -1032,7 +1035,72 @@ class JarvisCLI(ArgParse):
         rebuild_container = self.kwargs.get('container', False)
         no_cache = self.kwargs.get('no_cache', False)
         self.current_pipeline.update(rebuild_container=rebuild_container, no_cache=no_cache)
-        
+
+    def ppl_conf(self):
+        """Configure pipeline parameters"""
+        self._ensure_initialized()
+
+        if not self.current_pipeline:
+            current_name = self.jarvis_config.get_current_pipeline()
+            if current_name:
+                self.current_pipeline = Pipeline(current_name)
+            else:
+                raise ValueError("No current pipeline to configure")
+
+        # Parse key=value pairs from remainder
+        import shlex
+        remainder = self.kwargs.get('remainder', [])
+        if isinstance(remainder, str):
+            remainder = shlex.split(remainder)
+
+        if not remainder:
+            print("Usage: jarvis ppl conf key=value [key=value...]")
+            print("Available parameters:")
+            print("  hostfile=<path>         - Set pipeline-specific hostfile")
+            print("  container_name=<name>   - Set container name")
+            print("  container_engine=<name> - Set container engine (docker/podman)")
+            print("  container_base=<image>  - Set base container image")
+            return
+
+        # Parse parameters
+        params = {}
+        for arg in remainder:
+            if '=' not in arg:
+                print(f"Invalid parameter format: {arg} (expected key=value)")
+                continue
+            key, value = arg.split('=', 1)
+            params[key] = value
+
+        # Update pipeline parameters
+        needs_rebuild = False
+        for key, value in params.items():
+            if key == 'hostfile':
+                from jarvis_cd.util.hostfile import Hostfile
+                self.current_pipeline.hostfile = Hostfile(path=value)
+                print(f"Set pipeline hostfile: {value}")
+                needs_rebuild = True
+            elif key == 'container_name':
+                self.current_pipeline.container_name = value
+                print(f"Set container_name: {value}")
+                needs_rebuild = True
+            elif key == 'container_engine':
+                self.current_pipeline.container_engine = value
+                print(f"Set container_engine: {value}")
+            elif key == 'container_base':
+                self.current_pipeline.container_base = value
+                print(f"Set container_base: {value}")
+                needs_rebuild = True
+            else:
+                print(f"Unknown parameter: {key}")
+
+        # Save pipeline
+        self.current_pipeline.save()
+
+        # Rebuild container if needed
+        if needs_rebuild and self.current_pipeline.container_name:
+            print("\nRebuilding container with updated configuration...")
+            self.current_pipeline.update(rebuild_container=True, no_cache=False)
+
     def ppl_list(self):
         """List all pipelines"""
         self._ensure_initialized()
