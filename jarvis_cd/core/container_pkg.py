@@ -148,9 +148,9 @@ class ContainerApplication(Application):
             }
         }
 
-        # Use global container image if pipeline has container_name, otherwise build from local Dockerfile
-        if hasattr(self.pipeline, 'container_name') and self.pipeline.container_name:
-            compose_config['services'][service_name]['image'] = self.pipeline.container_name
+        # Use global container image if pipeline has container_build or container_image, otherwise build from local Dockerfile
+        if hasattr(self.pipeline, 'get_container_image') and self.pipeline.get_container_image():
+            compose_config['services'][service_name]['image'] = self.pipeline.get_container_image()
         else:
             compose_config['services'][service_name]['build'] = str(self.shared_dir)
 

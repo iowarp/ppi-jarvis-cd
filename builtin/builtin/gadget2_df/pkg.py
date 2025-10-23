@@ -109,7 +109,7 @@ class Gadget2Df(Application):
         Exec(f'{exec_path} {paramfile}',
              MpiExecInfo(nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'],
-                         hostfile=self.jarvis.hostfile,
+                         hostfile=self.hostfile,
                          env=self.mod_env,
                          cwd=ngenic_root)).run()
 

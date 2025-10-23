@@ -58,7 +58,7 @@ class Redis(Application):
 
         :return: None
         """
-        hostfile = self.jarvis.hostfile
+        hostfile = self.hostfile
         host_str = [f'{host}:{self.config["port"]}' for host in hostfile.hosts]
         host_str = ' '.join(host_str)
         cluster_config_file = f'{self.private_dir}/nodes.conf'
@@ -119,7 +119,7 @@ class Redis(Application):
         for i in range(3):
             Kill('redis-server',
                  PsshExecInfo(env=self.env,
-                              hostfile=self.jarvis.hostfile)).run()
+                              hostfile=self.hostfile)).run()
 
     def clean(self):
         """

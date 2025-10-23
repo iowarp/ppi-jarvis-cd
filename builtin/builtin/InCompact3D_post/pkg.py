@@ -123,7 +123,7 @@ class Incompact3dPost(Application):
         # Exec(f'inCompact3D_analysis {in_file} {out_file}',
         #      MpiExecInfo(nprocs=self.config['nprocs'],
         #                  ppn=self.config['ppn'],
-        #                  hostfile=self.jarvis.hostfile,
+        #                  hostfile=self.hostfile,
         #                  env=self.mod_env,
         #                  cwd=execute_location
         #                  ))
@@ -152,5 +152,5 @@ class Incompact3dPost(Application):
                       self.config['db_path']
                       ]
         print(f'Removing {output_dir}')
-        Rm(output_dir, PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
+        Rm(output_dir, PsshExecInfo(hostfile=self.hostfile)).run()
         pass

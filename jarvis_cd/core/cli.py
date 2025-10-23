@@ -2,7 +2,7 @@ import sys
 import os
 from pathlib import Path
 from jarvis_cd.util.argparse import ArgParse
-from jarvis_cd.core.config import JarvisConfig, Jarvis
+from jarvis_cd.core.config import Jarvis
 from jarvis_cd.core.pipeline import Pipeline
 from jarvis_cd.core.pipeline_index import PipelineIndexManager
 from jarvis_cd.core.repository import RepositoryManager
@@ -19,6 +19,7 @@ class JarvisCLI(ArgParse):
     
     def __init__(self):
         super().__init__()
+        self.jarvis = None
         self.jarvis_config = None
         self.current_pipeline = None
         self.pipeline_index_manager = None
@@ -199,8 +200,14 @@ class JarvisCLI(ArgParse):
                 'default': None,
             },
             {
-                'name': 'container_name',
-                'msg': 'Container name',
+                'name': 'container_build',
+                'msg': 'Container build name (for building custom image)',
+                'type': str,
+                'default': None,
+            },
+            {
+                'name': 'container_image',
+                'msg': 'Pre-built container image to use',
                 'type': str,
                 'default': None,
             },
@@ -840,9 +847,9 @@ class JarvisCLI(ArgParse):
         ])
         
     def _ensure_config_loaded(self):
-        """Ensure JarvisConfig is loaded (doesn't require full initialization)"""
+        """Ensure Jarvis is loaded (doesn't require full initialization)"""
         if self.jarvis_config is None:
-            self.jarvis_config = JarvisConfig()
+            self.jarvis_config = Jarvis.get_instance()
 
         # Initialize managers that don't require full Jarvis initialization
         if self.repo_manager is None:
@@ -851,22 +858,15 @@ class JarvisCLI(ArgParse):
     def _ensure_initialized(self):
         """Ensure Jarvis is initialized before running commands"""
         if self.jarvis_config is None:
-            self.jarvis_config = JarvisConfig()
+            self.jarvis_config = Jarvis.get_instance()
 
         if not self.jarvis_config.is_initialized():
             print("Error: Jarvis not initialized. Run 'jarvis init' first.")
             sys.exit(1)
-            
-        # Initialize Jarvis singleton if not already done
-        try:
-            Jarvis.get_instance()
-        except RuntimeError:
-            # Singleton not initialized, initialize it now
-            config = self.jarvis_config.config
-            config_dir = config.get('config_dir', str(self.jarvis_config.jarvis_root))
-            private_dir = config.get('private_dir', str(self.jarvis_config.jarvis_root / 'private'))
-            shared_dir = config.get('shared_dir', str(self.jarvis_config.jarvis_root / 'shared'))
-            Jarvis.initialize(self.jarvis_config, config_dir, private_dir, shared_dir)
+
+        # Get Jarvis singleton instance (same as jarvis_config now)
+        if self.jarvis is None:
+            self.jarvis = self.jarvis_config
             
         # Initialize managers
         if self.repo_manager is None:
@@ -912,14 +912,12 @@ class JarvisCLI(ArgParse):
         shared_dir = os.path.expanduser(self.kwargs['shared_dir'])
         force = self.kwargs.get('force', False)
 
-        jarvis_config = JarvisConfig()
-        jarvis_config.initialize(config_dir, private_dir, shared_dir, force=force)
+        jarvis = Jarvis.get_instance()
+        jarvis.initialize(config_dir, private_dir, shared_dir, force=force)
 
-        # Initialize Jarvis singleton
-        Jarvis.initialize(jarvis_config, config_dir, private_dir, shared_dir)
-
-        # Save jarvis_config to self so subsequent commands use the same instance
-        self.jarvis_config = jarvis_config
+        # Save jarvis instance to self so subsequent commands use the same instance
+        self.jarvis_config = jarvis
+        self.jarvis = jarvis
 
         print(f"Jarvis initialized successfully!")
         print(f"Config dir: {config_dir}")
@@ -1091,12 +1089,19 @@ class JarvisCLI(ArgParse):
             params_provided = True
             needs_rebuild = True
 
-        # Update container_name
-        if self.kwargs.get('container_name') is not None:
-            self.current_pipeline.container_name = self.kwargs['container_name']
-            print(f"Set container_name: {self.kwargs['container_name']}")
+        # Update container_build
+        if self.kwargs.get('container_build') is not None:
+            self.current_pipeline.container_build = self.kwargs['container_build']
+            print(f"Set container_build: {self.kwargs['container_build']}")
             params_provided = True
             needs_rebuild = True
+
+        # Update container_image
+        if self.kwargs.get('container_image') is not None:
+            self.current_pipeline.container_image = self.kwargs['container_image']
+            print(f"Set container_image: {self.kwargs['container_image']}")
+            params_provided = True
+            needs_rebuild = False  # Using pre-built image, no rebuild needed
 
         # Update container_engine
         if self.kwargs.get('container_engine') is not None:
@@ -1124,8 +1129,8 @@ class JarvisCLI(ArgParse):
         # Save pipeline
         self.current_pipeline.save()
 
-        # Rebuild container if needed
-        if needs_rebuild and self.current_pipeline.container_name:
+        # Rebuild container if needed (only if container_build is set)
+        if needs_rebuild and self.current_pipeline.container_build:
             print("\nRebuilding container with updated configuration...")
             self.current_pipeline.update(rebuild_container=True, no_cache=False)
 
@@ -1205,11 +1210,14 @@ class JarvisCLI(ArgParse):
             print(f"  Hosts: {', '.join(jarvis_hostfile.hosts)}")
 
         # Show container configuration if set
-        if hasattr(self.current_pipeline, 'container_name') and self.current_pipeline.container_name:
+        if hasattr(self.current_pipeline, 'is_containerized') and self.current_pipeline.is_containerized():
             print(f"Container Configuration:")
-            print(f"  Name: {self.current_pipeline.container_name}")
+            if self.current_pipeline.container_build:
+                print(f"  Build Name: {self.current_pipeline.container_build}")
+                print(f"  Base: {self.current_pipeline.container_base}")
+            if self.current_pipeline.container_image:
+                print(f"  Image: {self.current_pipeline.container_image}")
             print(f"  Engine: {self.current_pipeline.container_engine}")
-            print(f"  Base: {self.current_pipeline.container_base}")
             print(f"  SSH Port: {self.current_pipeline.container_ssh_port}")
 
         if self.current_pipeline.packages:

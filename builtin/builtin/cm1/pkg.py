@@ -173,7 +173,7 @@ class Cm1(Application):
         Exec(cmd, MpiExecInfo(env=self.env,
                               nprocs=corex * corey,
                               ppn=self.config['ppn'],
-                              hostfile=self.jarvis.hostfile)).run()
+                              hostfile=self.hostfile)).run()
 
     def stop(self):
         """

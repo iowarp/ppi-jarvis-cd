@@ -197,7 +197,7 @@ class Adios2GrayScott(Application):
             adios_dir = os.path.join(self.shared_dir, 'gray-scott-output')
             self.config['out_file'] = os.path.join(adios_dir,
                                                  'data/out.bp')
-            Mkdir(adios_dir, PsshExecInfo(hostfile=self.jarvis.hostfile,
+            Mkdir(adios_dir, PsshExecInfo(hostfile=self.hostfile,
                                           env=self.env)).run()
         settings_json = {
             'L': self.config['L'],
@@ -222,7 +222,7 @@ class Adios2GrayScott(Application):
         }
         output_dir = os.path.dirname(self.config['out_file'])
         db_dir = os.path.dirname(self.config['db_path'])
-        Mkdir([output_dir, db_dir], PsshExecInfo(hostfile=self.jarvis.hostfile,
+        Mkdir([output_dir, db_dir], PsshExecInfo(hostfile=self.hostfile,
                                        env=self.env)).run()
 
         JsonFile(self.settings_json_path).save(settings_json)
@@ -260,7 +260,7 @@ class Adios2GrayScott(Application):
             Exec(f'adios2-gray-scott {self.settings_json_path} {derived}',
                  MpiExecInfo(nprocs=self.config['nprocs'],
                              ppn=self.config['ppn'],
-                             hostfile=self.jarvis.hostfile,
+                             hostfile=self.hostfile,
                              env=self.mod_env
                              )).run()
         elif self.config['engine'].lower() in ['hermes', 'bp5']:
@@ -269,7 +269,7 @@ class Adios2GrayScott(Application):
             Exec(f'adios2-gray-scott {self.settings_json_path} {derived}',
                  MpiExecInfo(nprocs=self.config['nprocs'],
                              ppn=self.config['ppn'],
-                             hostfile=self.jarvis.hostfile,
+                             hostfile=self.hostfile,
                              env=self.mod_env)).run()
 
 
@@ -295,4 +295,4 @@ class Adios2GrayScott(Application):
                        ]
 
         print(f'Removing {output_file}')
-        Rm(output_file, PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
+        Rm(output_file, PsshExecInfo(hostfile=self.hostfile)).run()

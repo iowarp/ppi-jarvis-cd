@@ -40,7 +40,7 @@ class Pkg:
             pkg_name = import_parts[1]
         else:
             # Just package name, search in repos
-            full_spec = jarvis.jarvis_config.find_package(package_spec)
+            full_spec = jarvis.find_package(package_spec)
             if not full_spec:
                 raise ValueError(f"Package not found: {package_spec}")
             import_parts = full_spec.split('.')
@@ -52,11 +52,11 @@ class Pkg:
 
         # Load class
         if repo_name == 'builtin':
-            repo_path = str(jarvis.jarvis_config.get_builtin_repo_path())
+            repo_path = str(jarvis.get_builtin_repo_path())
         else:
             # Find repo path in registered repos
             repo_path = None
-            for registered_repo in jarvis.jarvis_config.repos['repos']:
+            for registered_repo in jarvis.repos['repos']:
                 if Path(registered_repo).name == repo_name:
                     repo_path = registered_repo
                     break
@@ -272,6 +272,13 @@ class Pkg:
         # Update configuration with provided parameters
         self.update_config(kwargs, rebuild=False)
 
+        # Print hostfile being used
+        hostfile = self.get_hostfile()
+        if hostfile and hostfile.path:
+            print(f"Package {self.pkg_id} using hostfile: {hostfile.path}")
+        else:
+            print(f"Package {self.pkg_id} using default hostfile (no path set)")
+
         # Call the internal configuration method
         self._configure(**kwargs)
 
@@ -364,9 +371,9 @@ class Pkg:
             pkg_id = getattr(self, 'pkg_id', None) or self.__class__.__name__.lower()
 
             # Get directories from pipeline
-            pipeline_config_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.pipeline.name)
-            pipeline_shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.pipeline.name)
-            pipeline_private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(self.pipeline.name)
+            pipeline_config_dir = self.jarvis.get_pipeline_dir(self.pipeline.name)
+            pipeline_shared_dir = self.jarvis.get_pipeline_shared_dir(self.pipeline.name)
+            pipeline_private_dir = self.jarvis.get_pipeline_private_dir(self.pipeline.name)
 
             if not self.config_dir:
                 self.config_dir = str(pipeline_config_dir / 'packages' / pkg_id)

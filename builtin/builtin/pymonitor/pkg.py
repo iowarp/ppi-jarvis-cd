@@ -71,7 +71,7 @@ class Pymonitor(Service):
         """
         self.log(f'Pymonitor started on {self.config["dir"]}')
         self.env['PYTHONBUFFERED'] = '0'
-        hostfile = self.jarvis.hostfile
+        hostfile = self.hostfile
         if self.config['num_nodes'] > 0:
             hostfile = hostfile.subset(self.config['num_nodes'])
         Monitor(self.config['frequency'],

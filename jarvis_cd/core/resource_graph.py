@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from jarvis_cd.core.config import JarvisConfig, Jarvis
+from jarvis_cd.core.config import Jarvis
 from jarvis_cd.util.resource_graph import ResourceGraph
 from jarvis_cd.util.logger import logger
 from jarvis_cd.shell import ResourceGraphExec, PsshExecInfo, LocalExec, LocalExecInfo

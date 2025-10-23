@@ -88,7 +88,7 @@ class Lammps(Application):
         Exec('lmp -in input.lammps',
              MpiExecInfo(nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'],
-                         hostfile=self.jarvis.hostfile,
+                         hostfile=self.hostfile,
                          env=self.mod_env,
                          cwd=self.config['script_location'])).run()
         pass
@@ -111,5 +111,5 @@ class Lammps(Application):
         """
 
         output_file = [self.config['db_path']]
-        Rm(output_file, PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
+        Rm(output_file, PsshExecInfo(hostfile=self.hostfile)).run()
         pass

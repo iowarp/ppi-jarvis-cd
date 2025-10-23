@@ -96,7 +96,7 @@ class NyxLya(Application):
         
         if self.config['output'] is None:
             self.config['output'] = f'{self.nyx_lya_path}/outputs'
-            Mkdir(self.config['output'], PsshExecInfo(hostfile=self.jarvis.hostfile,
+            Mkdir(self.config['output'], PsshExecInfo(hostfile=self.hostfile,
                                           env=self.env)).run()
 
         # copy a template inputs file from NYX installation path to the pkg directory
@@ -149,7 +149,7 @@ class NyxLya(Application):
         Exec(f'{self.nyx_lya_path}/nyx_LyA {self.inputs_path}',
              MpiExecInfo(nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'],
-                         hostfile=self.jarvis.hostfile,
+                         hostfile=self.hostfile,
                          env=self.env)).run()
 
     def stop(self):

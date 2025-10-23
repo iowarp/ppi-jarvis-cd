@@ -109,7 +109,7 @@ class RedisBenchmark(Application):
         :return: None
         """
 
-        hostfile = self.jarvis.hostfile
+        hostfile = self.hostfile
         bench_type = [
             'set' if self.config['write'] else '',
             'get' if self.config['read'] else '',
@@ -150,7 +150,7 @@ class RedisBenchmark(Application):
 
         :return: None
         """
-        hostfile = self.jarvis.hostfile
+        hostfile = self.hostfile
         for host in range(hostfile.hosts):
             Exec(f'redis-cli -p {self.config["port"]} -h {host} flushall',
                  LocalExecInfo(env=self.mod_env,

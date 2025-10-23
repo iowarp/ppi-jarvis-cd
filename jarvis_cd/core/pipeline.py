@@ -8,7 +8,7 @@ import yaml
 import copy
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from jarvis_cd.core.config import JarvisConfig, load_class, Jarvis
+from jarvis_cd.core.config import load_class, Jarvis
 from jarvis_cd.util.logger import logger
 from jarvis_cd.util.hostfile import Hostfile
 
@@ -34,9 +34,10 @@ class Pipeline:
         self.last_loaded_file = None
 
         # Container parameters
-        self.container_name = ""  # Empty string means not containerized
+        self.container_build = ""  # Empty string means use pre-built image (no augment_container)
+        self.container_image = ""  # Image to use when container_build is empty
         self.container_engine = "podman"  # Default container engine
-        self.container_base = "iowarp/iowarp-deps:ai"  # Base image
+        self.container_base = "iowarp/iowarp-deps:ai"  # Base image (only used when container_build is set)
         self.container_ssh_port = 2222  # Default SSH port for containers
         self.container_extensions = {}  # Custom extensions to Docker compose file
 
@@ -58,6 +59,22 @@ class Pipeline:
             return self.hostfile
         return self.jarvis.hostfile
 
+    def is_containerized(self) -> bool:
+        """
+        Check if this pipeline uses containers.
+
+        :return: True if pipeline uses containers (either build or pre-built image)
+        """
+        return bool(self.container_build or self.container_image)
+
+    def get_container_image(self) -> str:
+        """
+        Get the container image name to use.
+
+        :return: Image name (container_image if set, otherwise container_build)
+        """
+        return self.container_image if self.container_image else self.container_build
+
     def create(self, pipeline_name: str):
         """
         Create a new pipeline.
@@ -67,9 +84,9 @@ class Pipeline:
         self.name = pipeline_name
 
         # Create all three directories for the pipeline
-        pipeline_config_dir = self.jarvis.jarvis_config.get_pipeline_dir(pipeline_name)
-        pipeline_shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(pipeline_name)
-        pipeline_private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(pipeline_name)
+        pipeline_config_dir = self.jarvis.get_pipeline_dir(pipeline_name)
+        pipeline_shared_dir = self.jarvis.get_pipeline_shared_dir(pipeline_name)
+        pipeline_private_dir = self.jarvis.get_pipeline_private_dir(pipeline_name)
 
         pipeline_config_dir.mkdir(parents=True, exist_ok=True)
         pipeline_shared_dir.mkdir(parents=True, exist_ok=True)
@@ -86,7 +103,7 @@ class Pipeline:
         self.save()
 
         # Set as current pipeline
-        self.jarvis.jarvis_config.set_current_pipeline(pipeline_name)
+        self.jarvis.set_current_pipeline(pipeline_name)
 
         print(f"Created pipeline: {pipeline_name}")
         print(f"Config directory: {pipeline_config_dir}")
@@ -118,7 +135,7 @@ class Pipeline:
         if not self.name:
             raise ValueError("Pipeline name not set")
 
-        pipeline_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.name)
+        pipeline_dir = self.jarvis.get_pipeline_dir(self.name)
         pipeline_dir.mkdir(parents=True, exist_ok=True)
 
         # Create pipeline configuration in the SAME format as pipeline scripts
@@ -135,7 +152,8 @@ class Pipeline:
         if self.last_loaded_file:
             pipeline_config['last_loaded_file'] = self.last_loaded_file
         # Add container parameters (always save, even if empty/default)
-        pipeline_config['container_name'] = self.container_name
+        pipeline_config['container_build'] = self.container_build
+        pipeline_config['container_image'] = self.container_image
         pipeline_config['container_engine'] = self.container_engine
         pipeline_config['container_base'] = self.container_base
         pipeline_config['container_ssh_port'] = self.container_ssh_port
@@ -145,7 +163,7 @@ class Pipeline:
         # Add hostfile parameter (save path if set, None means use global jarvis hostfile)
         # For containerized pipelines, use the container-mounted path
         if self.hostfile:
-            if self.container_name:
+            if self.container_build or self.container_image:
                 # In container, hostfile will be mounted at /root/.ppi-jarvis/hostfile
                 pipeline_config['hostfile'] = "/root/.ppi-jarvis/hostfile"
             else:
@@ -206,7 +224,7 @@ class Pipeline:
         # Determine which pipeline to destroy
         if pipeline_name is None:
             if not self.name:
-                current_pipeline = self.jarvis.jarvis_config.get_current_pipeline()
+                current_pipeline = self.jarvis.get_current_pipeline()
                 if not current_pipeline:
                     print("No current pipeline to destroy. Specify a pipeline name or create/switch to one first.")
                     return
@@ -214,8 +232,8 @@ class Pipeline:
             else:
                 pipeline_name = self.name
                 
-        target_pipeline_dir = self.jarvis.jarvis_config.get_pipeline_dir(pipeline_name)
-        current_pipeline = self.jarvis.jarvis_config.get_current_pipeline()
+        target_pipeline_dir = self.jarvis.get_pipeline_dir(pipeline_name)
+        current_pipeline = self.jarvis.get_current_pipeline()
         is_current = (pipeline_name == current_pipeline)
         
         # Check if pipeline exists
@@ -242,9 +260,9 @@ class Pipeline:
             
             # Clear current pipeline if we destroyed it
             if is_current:
-                config = self.jarvis.jarvis_config.config.copy()
+                config = self.jarvis.config.copy()
                 config['current_pipeline'] = None
-                self.jarvis.jarvis_config.save_config(config)
+                self.jarvis.save_config(config)
                 print("Cleared current pipeline (destroyed pipeline was active)")
                 
         except Exception as e:
@@ -257,7 +275,7 @@ class Pipeline:
         logger.pipeline(f"Starting pipeline: {self.name}")
 
         # Check if pipeline is configured for containerized deployment
-        if self.container_name:
+        if self.is_containerized():
             # Container deployment mode - deploy to all nodes in hostfile
             self._start_containerized_pipeline()
         else:
@@ -294,7 +312,7 @@ class Pipeline:
         logger.pipeline(f"Stopping pipeline: {self.name}")
 
         # Check if pipeline is configured for containerized deployment
-        if self.container_name:
+        if self.is_containerized():
             # Container deployment mode - stop containers on all nodes
             self._stop_containerized_pipeline()
         else:
@@ -324,7 +342,7 @@ class Pipeline:
         logger.pipeline(f"Killing pipeline: {self.name}")
 
         # Check if pipeline is configured for containerized deployment
-        if self.container_name:
+        if self.is_containerized():
             # Container deployment mode - kill containers on all nodes
             self._kill_containerized_pipeline()
         else:
@@ -411,12 +429,21 @@ class Pipeline:
         This must be called BEFORE configure_all_packages() because package configuration
         may need the container image to already exist.
 
+        Only builds if container_build is set. If container_image is set (pre-built image),
+        skips the build process entirely.
+
         Returns True if container was modified and rebuilt, False otherwise.
         """
-        if not self.container_name:
+        # Skip if not using containers at all
+        if not self.is_containerized():
             return False
 
-        print(f"Building container image: {self.container_name}")
+        # Skip if using pre-built image (container_image is set but not container_build)
+        if self.container_image and not self.container_build:
+            print(f"Using pre-built container image: {self.container_image}")
+            return False
+
+        print(f"Building container image: {self.container_build}")
 
         # Track whether any packages were added
         self._container_modified = False
@@ -437,7 +464,7 @@ class Pipeline:
         container_was_modified = self._container_modified
         if container_was_modified and self._get_container_dockerfile_path().exists():
             self._build_container_image()
-            print(f"Container image built: {self.container_name}")
+            print(f"Container image built: {self.get_container_image()}")
 
         return container_was_modified
 
@@ -458,7 +485,7 @@ class Pipeline:
             manifest = self._load_container_manifest()
             installed_mode = manifest[pkg_type]
             raise ValueError(
-                f"Package '{pkg_type}' is already installed in container '{self.container_name}' "
+                f"Package '{pkg_type}' is already installed in container '{self.get_container_image()}' "
                 f"with deploy_mode='{installed_mode}', but pipeline requires deploy_mode='{deploy_mode}'. "
                 f"Different deploy modes for the same package in one container are not allowed."
             )
@@ -521,12 +548,12 @@ class Pipeline:
         self.configure_all_packages()
 
         # Handle forced container rebuild if explicitly requested
-        if rebuild_container and self.container_name:
+        if rebuild_container and self.is_containerized():
             from jarvis_cd.shell.exec_factory import Exec
             from jarvis_cd.shell.exec_info import LocalExecInfo
 
             containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
-            dockerfile_path = containers_dir / f'{self.container_name}.Dockerfile'
+            dockerfile_path = containers_dir / f'{self.get_container_image()}.Dockerfile'
 
             if not dockerfile_path.exists():
                 raise FileNotFoundError(f"Dockerfile not found at {dockerfile_path}")
@@ -535,13 +562,13 @@ class Pipeline:
             use_engine = self.container_engine.lower()
 
             no_cache_flag = " --no-cache" if no_cache else ""
-            build_cmd = f"{use_engine} build{no_cache_flag} -t {self.container_name} -f {dockerfile_path} {containers_dir}"
+            build_cmd = f"{use_engine} build{no_cache_flag} -t {self.get_container_image()} -f {dockerfile_path} {containers_dir}"
 
-            print(f"Force rebuilding container '{self.container_name}' using {use_engine}...")
+            print(f"Force rebuilding container '{self.get_container_image()}' using {use_engine}...")
             Exec(build_cmd, LocalExecInfo()).run()
-            print(f"Container '{self.container_name}' rebuilt successfully")
+            print(f"Container '{self.get_container_image()}' rebuilt successfully")
         elif container_was_modified:
-            print(f"Container '{self.container_name}' was automatically rebuilt due to manifest changes")
+            print(f"Container '{self.get_container_image()}' was automatically rebuilt due to manifest changes")
 
     def _configure_package_instance(self, pkg_def: Dict[str, Any], pkg_type_label: str):
         """
@@ -596,7 +623,7 @@ class Pipeline:
         else:
             # Try to find package in available repos
             pkg_name = package_spec
-            full_spec = self.jarvis.jarvis_config.find_package(pkg_name)
+            full_spec = self.jarvis.find_package(pkg_name)
             if not full_spec:
                 raise ValueError(f"Package not found: {pkg_name}")
             package_spec = full_spec
@@ -727,7 +754,7 @@ class Pipeline:
                 print(f"Package {pkg_id} has no configure method")
 
             # Build container if pipeline is containerized
-            if self.container_name:
+            if self.is_containerized():
                 self._add_package_to_container_image(pkg_instance, pkg_def)
 
             # Save updated pipeline
@@ -795,7 +822,7 @@ class Pipeline:
         - pipeline.yaml: Contains package/interceptor configuration in script format
         - environment.yaml: Contains environment variables only
         """
-        pipeline_dir = self.jarvis.jarvis_config.get_pipeline_dir(self.name)
+        pipeline_dir = self.jarvis.get_pipeline_dir(self.name)
         config_file = pipeline_dir / 'pipeline.yaml'
 
         if not config_file.exists():
@@ -810,7 +837,8 @@ class Pipeline:
         self.last_loaded_file = pipeline_config.get('last_loaded_file')
 
         # Load container parameters
-        self.container_name = pipeline_config.get('container_name', '')
+        self.container_build = pipeline_config.get('container_build', pipeline_config.get('container_name', ''))  # Backwards compat
+        self.container_image = pipeline_config.get('container_image', '')
         self.container_engine = pipeline_config.get('container_engine', 'podman')
         self.container_base = pipeline_config.get('container_base', 'iowarp/iowarp-deps:ai')
         self.container_ssh_port = pipeline_config.get('container_ssh_port', 2222)
@@ -931,7 +959,8 @@ class Pipeline:
         self.interceptors = {}  # Store pipeline-level interceptors by name
 
         # Load container parameters
-        self.container_name = pipeline_def.get('container_name', '')
+        self.container_build = pipeline_def.get('container_build', pipeline_def.get('container_name', ''))  # Backwards compat
+        self.container_image = pipeline_def.get('container_image', '')
         self.container_engine = pipeline_def.get('container_engine', 'podman')
         self.container_base = pipeline_def.get('container_base', 'iowarp/iowarp-deps:ai')
         self.container_ssh_port = pipeline_def.get('container_ssh_port', 2222)
@@ -945,7 +974,7 @@ class Pipeline:
             self.hostfile = None
 
         # Debug output
-        print(f"DEBUG: Loaded container_name='{self.container_name}'")
+        print(f"DEBUG: Loaded container_name='{self.get_container_image()}'")
         print(f"DEBUG: Loaded container_base='{self.container_base}'")
         
         # Process interceptors
@@ -968,7 +997,7 @@ class Pipeline:
         self.save()
 
         # Generate container files if this is a containerized pipeline
-        if self.container_name:
+        if self.is_containerized():
             print(f"Generating container configuration files...")
             self._generate_pipeline_container_yaml()
 
@@ -980,12 +1009,12 @@ class Pipeline:
                 print(f"Container manifest changed, rebuilding...")
                 self._build_global_container_image()
             else:
-                print(f"Container manifest unchanged, skipping rebuild (use 'jarvis container update {self.container_name}' to force)")
+                print(f"Container manifest unchanged, skipping rebuild (use 'jarvis container update {self.get_container_image()}' to force)")
 
             self._generate_pipeline_compose_file()
 
         # Set as current pipeline
-        self.jarvis.jarvis_config.set_current_pipeline(self.name)
+        self.jarvis.set_current_pipeline(self.name)
 
         print(f"Loaded pipeline: {self.name}")
         print(f"Packages: {[pkg['pkg_id'] for pkg in self.packages]}")
@@ -1010,7 +1039,7 @@ class Pipeline:
             pkg_name = import_parts[1]
         else:
             # Just package name, search in repos
-            full_spec = self.jarvis.jarvis_config.find_package(pkg_type)
+            full_spec = self.jarvis.find_package(pkg_type)
             if not full_spec:
                 raise ValueError(f"Package not found: {pkg_type}")
             import_parts = full_spec.split('.')
@@ -1022,11 +1051,11 @@ class Pipeline:
         
         # Load class
         if repo_name == 'builtin':
-            repo_path = str(self.jarvis.jarvis_config.get_builtin_repo_path())
+            repo_path = str(self.jarvis.get_builtin_repo_path())
         else:
             # Find repo path in registered repos
             repo_path = None
-            for registered_repo in self.jarvis.jarvis_config.repos['repos']:
+            for registered_repo in self.jarvis.repos['repos']:
                 if Path(registered_repo).name == repo_name:
                     repo_path = registered_repo
                     break
@@ -1107,7 +1136,7 @@ class Pipeline:
 
         # Resolve pkg_type to full specification (repo.package) if not already specified
         if '.' not in pkg_type:
-            resolved_type = self.jarvis.jarvis_config.find_package(pkg_type)
+            resolved_type = self.jarvis.find_package(pkg_type)
             if resolved_type:
                 pkg_type = resolved_type
             # If not found, keep original (will fail later during loading)
@@ -1276,19 +1305,19 @@ class Pipeline:
 
     def _get_container_manifest_path(self) -> Path:
         """Get the path to the container manifest file."""
-        if not self.container_name:
+        if not self.is_containerized():
             raise ValueError("Container name not set")
         containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
         containers_dir.mkdir(parents=True, exist_ok=True)
-        return containers_dir / f"{self.container_name}.yaml"
+        return containers_dir / f"{self.get_container_image()}.yaml"
 
     def _get_container_dockerfile_path(self) -> Path:
         """Get the path to the container Dockerfile."""
-        if not self.container_name:
+        if not self.is_containerized():
             raise ValueError("Container name not set")
         containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
         containers_dir.mkdir(parents=True, exist_ok=True)
-        return containers_dir / f"{self.container_name}.Dockerfile"
+        return containers_dir / f"{self.get_container_image()}.Dockerfile"
 
     def _load_container_manifest(self) -> Dict[str, str]:
         """
@@ -1385,7 +1414,7 @@ class Pipeline:
             manifest = self._load_container_manifest()
             installed_mode = manifest[pkg_type]
             raise ValueError(
-                f"Package '{pkg_type}' is already installed in container '{self.container_name}' "
+                f"Package '{pkg_type}' is already installed in container '{self.get_container_image()}' "
                 f"with deploy_mode='{installed_mode}', but pipeline requires deploy_mode='{deploy_mode}'. "
                 f"Different deploy modes for the same package in one container are not allowed."
             )
@@ -1430,24 +1459,24 @@ class Pipeline:
         compose_content = f"""version: '3.8'
 
 services:
-  {self.container_name}:
+  {self.get_container_image()}:
     build:
       context: {dockerfile_path.parent}
       dockerfile: {dockerfile_path.name}
-    image: {self.container_name}
+    image: {self.get_container_image()}
 """
 
         # Write temporary compose file
-        compose_path = dockerfile_path.parent / f"{self.container_name}.compose.yaml"
+        compose_path = dockerfile_path.parent / f"{self.get_container_image()}.compose.yaml"
         with open(compose_path, 'w') as f:
             f.write(compose_content)
 
         # Use ContainerBuildExec to build
-        print(f"Building container image: {self.container_name}")
+        print(f"Building container image: {self.get_container_image()}")
         prefer_podman = self.container_engine.lower() == 'podman'
         build_exec = ContainerBuildExec(str(compose_path), LocalExecInfo(), prefer_podman=prefer_podman)
         build_exec.run()
-        print(f"Container image built: {self.container_name}")
+        print(f"Container image built: {self.get_container_image()}")
 
         # Clean up temporary compose file
         compose_path.unlink()
@@ -1487,7 +1516,7 @@ services:
                 pipeline_config['interceptors'].append(interceptor_entry)
 
         # Write to shared directory
-        shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.name)
+        shared_dir = self.jarvis.get_pipeline_shared_dir(self.name)
         yaml_path = shared_dir / 'pipeline.yaml'
         with open(yaml_path, 'w') as f:
             yaml.dump(pipeline_config, f, default_flow_style=False)
@@ -1506,7 +1535,7 @@ services:
         import json
 
         containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
-        manifest_path = containers_dir / f'{self.container_name}.manifest'
+        manifest_path = containers_dir / f'{self.get_container_image()}.manifest'
 
         # If no manifest exists, need to build
         if not manifest_path.exists():
@@ -1532,7 +1561,7 @@ services:
         """
         Generate global container Dockerfile in ~/.ppi-jarvis/containers/ by calling
         augment_container() on all packages. This container is built once and reused
-        across pipelines with the same container_name.
+        across pipelines with the same container_build name.
 
         :return: Path to generated Dockerfile
         """
@@ -1541,7 +1570,7 @@ services:
         # Use global containers directory
         containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
         containers_dir.mkdir(parents=True, exist_ok=True)
-        dockerfile_path = containers_dir / f'{self.container_name}.Dockerfile'
+        dockerfile_path = containers_dir / f'{self.get_container_image()}.Dockerfile'
 
         # Start with base image
         print(f"Using base image: {self.container_base}")
@@ -1581,7 +1610,7 @@ services:
         # Note: CMD is not added to global Dockerfile - it will be specified in docker-compose
 
         # Save container manifest (list of package types for rebuild detection)
-        manifest_path = containers_dir / f'{self.container_name}.manifest'
+        manifest_path = containers_dir / f'{self.get_container_image()}.manifest'
         pkg_types = [pkg_def['pkg_type'] for pkg_def in self.packages]
         interceptor_types = [idef['pkg_type'] for idef in self.interceptors.values()]
         manifest = {
@@ -1599,28 +1628,28 @@ services:
     def _build_global_container_image(self):
         """
         Build the global container image from the Dockerfile in ~/.ppi-jarvis/containers/.
-        This image is tagged with container_name and can be reused across pipelines.
+        This image is tagged with container_build name and can be reused across pipelines.
         """
         from pathlib import Path
         from jarvis_cd.shell import LocalExecInfo, Exec
 
         containers_dir = Path.home() / '.ppi-jarvis' / 'containers'
-        dockerfile_path = containers_dir / f'{self.container_name}.Dockerfile'
+        dockerfile_path = containers_dir / f'{self.get_container_image()}.Dockerfile'
 
         if not dockerfile_path.exists():
             raise FileNotFoundError(f"Dockerfile not found: {dockerfile_path}")
 
-        print(f"Building global container image: {self.container_name}")
+        print(f"Building global container image: {self.get_container_image()}")
 
         # Determine build command based on container engine
         if self.container_engine.lower() == 'podman':
-            build_cmd = f"podman build -t {self.container_name} -f {dockerfile_path} {containers_dir}"
+            build_cmd = f"podman build -t {self.get_container_image()} -f {dockerfile_path} {containers_dir}"
         else:
-            build_cmd = f"docker build -t {self.container_name} -f {dockerfile_path} {containers_dir}"
+            build_cmd = f"docker build -t {self.get_container_image()} -f {dockerfile_path} {containers_dir}"
 
         # Build the image
         Exec(build_cmd, LocalExecInfo()).run()
-        print(f"Container image built: {self.container_name}")
+        print(f"Container image built: {self.get_container_image()}")
 
     def _generate_pipeline_compose_file(self):
         """
@@ -1632,7 +1661,7 @@ services:
         import yaml
         import os
 
-        shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.name)
+        shared_dir = self.jarvis.get_pipeline_shared_dir(self.name)
         compose_path = shared_dir / 'docker-compose.yaml'
 
         container_name = f"{self.name}_container"
@@ -1662,7 +1691,7 @@ services:
         )
 
         # Create compose configuration using the global container image
-        private_dir = self.jarvis.jarvis_config.get_pipeline_private_dir(self.name)
+        private_dir = self.jarvis.get_pipeline_private_dir(self.name)
 
         # Prepare volume mounts
         volumes = [
@@ -1678,7 +1707,7 @@ services:
 
         service_config = {
             'container_name': container_name,
-            'image': self.container_name,  # Use pre-built global image
+            'image': self.get_container_image(),  # Use pre-built global image
             'entrypoint': ['/bin/bash', '-c'],
             'command': [container_cmd],
             'network_mode': 'host',
@@ -1743,7 +1772,7 @@ services:
         logger.info("Starting containerized pipeline deployment")
 
         # Get compose file path (already generated during load)
-        shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.name)
+        shared_dir = self.jarvis.get_pipeline_shared_dir(self.name)
         compose_path = shared_dir / 'docker-compose.yaml'
 
         if not compose_path.exists():
@@ -1780,7 +1809,7 @@ services:
         prefer_podman = self.container_engine.lower() == 'podman'
 
         # Get compose file path
-        shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.name)
+        shared_dir = self.jarvis.get_pipeline_shared_dir(self.name)
         compose_path = shared_dir / 'docker-compose.yaml'
 
         # Check if we have a hostfile
@@ -1811,7 +1840,7 @@ services:
         prefer_podman = self.container_engine.lower() == 'podman'
 
         # Get compose file path
-        shared_dir = self.jarvis.jarvis_config.get_pipeline_shared_dir(self.name)
+        shared_dir = self.jarvis.get_pipeline_shared_dir(self.name)
         compose_path = shared_dir / 'docker-compose.yaml'
 
         # Check if we have a hostfile

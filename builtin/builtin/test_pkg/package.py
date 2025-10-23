@@ -89,7 +89,7 @@ class Test_pkg(Application):
         # from jarvis_util import MpiExecInfo, Exec
         # Exec(' '.join(cmd),
         #      MpiExecInfo(env=self.mod_env,
-        #                  hostfile=self.jarvis.hostfile,
+        #                  hostfile=self.hostfile,
         #                  nprocs=self.config['nprocs'],
         #                  ppn=self.config['ppn']))
         

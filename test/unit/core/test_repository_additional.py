@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from jarvis_cd.core.repository import RepositoryManager
-from jarvis_cd.core.config import JarvisConfig
+from jarvis_cd.core.config import Jarvis
 
 
 class TestRepositoryManagerAdditional(unittest.TestCase):
@@ -25,8 +25,9 @@ class TestRepositoryManagerAdditional(unittest.TestCase):
         self.shared_dir = self.test_dir / 'shared'
         self.jarvis_root = self.test_dir / '.ppi-jarvis'
 
-        # Initialize Jarvis config
-        self.jarvis_config = JarvisConfig(jarvis_root=str(self.jarvis_root))
+        # Reset and initialize Jarvis singleton
+        Jarvis._instance = None
+        self.jarvis_config = Jarvis(jarvis_root=str(self.jarvis_root))
         self.jarvis_config.initialize(
             str(self.config_dir),
             str(self.private_dir),

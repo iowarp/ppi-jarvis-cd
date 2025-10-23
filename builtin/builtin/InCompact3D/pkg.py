@@ -136,7 +136,7 @@ class Incompact3d(Application):
         Exec('xcompact3d',
              MpiExecInfo(nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'],
-                         hostfile=self.jarvis.hostfile,
+                         hostfile=self.hostfile,
                          env=self.mod_env,
                          cwd=execute_location
                          )).run()
@@ -165,5 +165,5 @@ class Incompact3d(Application):
                        ]
 
         print(f'Removing {output_files}')
-        Rm(output_files, PsshExecInfo(hostfile=self.jarvis.hostfile)).run()
+        Rm(output_files, PsshExecInfo(hostfile=self.hostfile)).run()
         pass

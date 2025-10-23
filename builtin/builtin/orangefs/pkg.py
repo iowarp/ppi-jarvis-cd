@@ -88,9 +88,9 @@ class Orangefs(Service, OrangefsCustomKern, OrangefsAres, OrangefsFuse):
             self.config['sudoenv'] = False
 
         # Configure and save hosts
-        self.client_hosts = self.jarvis.hostfile
-        self.server_hosts = self.jarvis.hostfile
-        self.md_hosts = self.jarvis.hostfile
+        self.client_hosts = self.hostfile
+        self.server_hosts = self.hostfile
+        self.md_hosts = self.hostfile
         self.config['client_host_set'] = self.client_hosts.hosts
         self.config['server_host_set'] = self.server_hosts.hosts
         self.config['md_host_set'] = self.md_hosts.hosts
@@ -103,7 +103,7 @@ class Orangefs(Service, OrangefsCustomKern, OrangefsAres, OrangefsFuse):
         Pscp([self.config['client_hosts_path'],
               self.config['server_hosts_path'],
               self.config['metadata_hosts_path']],
-             PsshExecInfo(hosts=self.jarvis.hostfile, env=self.env)).run()
+             PsshExecInfo(hosts=self.hostfile, env=self.env)).run()
         self.log('Distributed client, server, and metadata hostfiles', Color.YELLOW)
 
         # Locate storage hardware
@@ -144,7 +144,7 @@ class Orangefs(Service, OrangefsCustomKern, OrangefsAres, OrangefsFuse):
         pvfs_gen_cmd = " ".join(pvfs_gen_cmd)
         Exec(pvfs_gen_cmd, LocalExecInfo(env=self.env)).run()
         Pscp(self.config['pfs_conf'],
-             PsshExecInfo(hosts=self.jarvis.hostfile, env=self.env)).run()
+             PsshExecInfo(hosts=self.hostfile, env=self.env)).run()
         self.log(f"Generated pvfs2 config: {self.config['pfs_conf']}", Color.YELLOW)
 
         # Create storage directories
@@ -169,7 +169,7 @@ class Orangefs(Service, OrangefsCustomKern, OrangefsAres, OrangefsFuse):
                     mount_point=self.config['mount'],
                     client_pvfs2tab=self.config['pvfs2tab']))
         Pscp(self.config['pvfs2tab'],
-             PsshExecInfo(hosts=self.jarvis.hostfile,
+             PsshExecInfo(hosts=self.hostfile,
                           env=self.env)).run()
         self.env['PVFS2TAB_FILE'] = self.config['pvfs2tab']
         self.log(f"Create PVFS2TAB_FILE: {self.config['pvfs2tab']}", Color.YELLOW)

@@ -2,19 +2,19 @@ import os
 import shutil
 from pathlib import Path
 from typing import Dict, Any, List
-from jarvis_cd.core.config import JarvisConfig
+from jarvis_cd.core.config import Jarvis
 
 
 class RepositoryManager:
     """
     Manages Jarvis repositories - adding, removing, listing, and creating packages.
     """
-    
-    def __init__(self, jarvis_config: JarvisConfig):
+
+    def __init__(self, jarvis_config: Jarvis):
         """
         Initialize repository manager.
-        
-        :param jarvis_config: Jarvis configuration manager
+
+        :param jarvis_config: Jarvis configuration singleton
         """
         self.jarvis_config = jarvis_config
         

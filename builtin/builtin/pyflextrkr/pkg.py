@@ -285,16 +285,16 @@ class Pyflextrkr(Application):
         elif self.config['run_parallel'] == 2:
             host_list_str = None
             
-            # Check if self.jarvis.hostfile is set
-            if self.jarvis.hostfile is None:
-                raise Exception("Running with Dask-MPI mode but self.jarvis.hostfile is None")
+            # Check if self.hostfile is set
+            if self.hostfile is None:
+                raise Exception("Running with Dask-MPI mode but self.hostfile is None")
             
-            # open self.jarvis.hostfile to get all lines of hosts into a string deliminated by ,
-            # self.log(f"Pyflextrkr hostfile: {self.jarvis.hostfile}")
-            if 'localhost' in self.jarvis.hostfile:
+            # open self.hostfile to get all lines of hosts into a string deliminated by ,
+            # self.log(f"Pyflextrkr hostfile: {self.hostfile}")
+            if 'localhost' in self.hostfile:
                 host_list_str = "127.0.0.1"
             else:
-                for hostname in self.jarvis.hostfile:
+                for hostname in self.hostfile:
                     if host_list_str is None:
                         host_list_str = hostname.rstrip()
                     else:
@@ -305,7 +305,7 @@ class Pyflextrkr(Application):
             self.log(f"Pyflextrkr host_list_str: {host_list_str}")
             
             # mpirun --host $hostlist --npernode 2
-            ppn = self.config['nprocesses']/len(self.jarvis.hostfile)
+            ppn = self.config['nprocesses']/len(self.hostfile)
             cmd = [
                 'conda','run', '-v','-n', self.config['conda_env'],
                 'mpirun',
@@ -375,7 +375,7 @@ class Pyflextrkr(Application):
         :return: None
         """
         cmd = ['killall', '-9', 'python']
-        Exec(' '.join(cmd), LocalExecInfo(hostfile=self.jarvis.hostfile)).run()
+        Exec(' '.join(cmd), LocalExecInfo(hostfile=self.hostfile)).run()
 
     def clean(self):
         """

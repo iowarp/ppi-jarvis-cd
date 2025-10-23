@@ -2,7 +2,7 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from jarvis_cd.core.config import JarvisConfig
+from jarvis_cd.core.config import Jarvis
 
 
 class EnvironmentManager:
@@ -66,11 +66,11 @@ class EnvironmentManager:
         'LIBS',
     ]
     
-    def __init__(self, jarvis_config: JarvisConfig):
+    def __init__(self, jarvis_config: Jarvis):
         """
         Initialize environment manager.
-        
-        :param jarvis_config: Jarvis configuration manager
+
+        :param jarvis_config: Jarvis configuration singleton
         """
         self.jarvis_config = jarvis_config
         

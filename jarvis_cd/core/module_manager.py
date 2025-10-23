@@ -7,7 +7,7 @@ import yaml
 import shutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from jarvis_cd.core.config import JarvisConfig, Jarvis
+from jarvis_cd.core.config import Jarvis
 from jarvis_cd.util.logger import logger
 from jarvis_cd.shell.exec_factory import Exec
 from jarvis_cd.shell.exec_info import LocalExecInfo
@@ -18,15 +18,15 @@ class ModuleManager:
     Manages modulefiles for manually-installed packages.
     Provides creation, configuration, and generation of TCL and YAML modulefiles.
     """
-    
-    def __init__(self, jarvis_config: JarvisConfig):
+
+    def __init__(self, jarvis_config: Jarvis):
         """
         Initialize module manager.
-        
-        :param jarvis_config: Jarvis configuration manager
+
+        :param jarvis_config: Jarvis configuration singleton
         """
         self.jarvis_config = jarvis_config
-        self.jarvis = Jarvis.get_instance()
+        self.jarvis = jarvis_config  # They are the same now
         
         # Module directory structure
         self.modules_root = Path.home() / '.ppi-jarvis-mods'

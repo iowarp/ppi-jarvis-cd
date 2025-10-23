@@ -214,8 +214,8 @@ class Ddmd(Application):
             gpu_idx = 0 # dummy now
             stage_name="molecular_dynamics"
             
-            node_idx = len(self.jarvis.hostfile) % self.config['nnodes']
-            node_name = self.jarvis.hostfile[node_idx]
+            node_idx = len(self.hostfile) % self.config['nnodes']
+            node_name = self.hostfile[node_idx]
             
             yaml_path = self.config['ddmd_path'] + "/test/bba/" + stage_name + "_stage_test.yaml"
             dest_path= self.config['experiment_path'] + "/" + stage_name + "_runs/" + stage_idx + "/" + task_idx
@@ -281,7 +281,7 @@ class Ddmd(Application):
         
         stage_idx = "stage" + str((self.config['stage_idx'])).zfill(4)
         node_idx = 0 # TODO: allow specify nodes?
-        node_name = self.jarvis.hostfile[node_idx]
+        node_name = self.hostfile[node_idx]
         yaml_path = self.config['ddmd_path'] + "/test/bba/" + stage_name + "_stage_test.yaml"
         dest_path= self.config['experiment_path'] + "/" + stage_name + "_runs/" + stage_idx + "/" + task_idx
         # create the dest_path
@@ -336,7 +336,7 @@ class Ddmd(Application):
         stage_idx = "stage" + str((self.config['stage_idx'])).zfill(4)
         model_tag = stage_idx + "_" + task_idx
         node_idx = 0 # TODO: allow specify nodes?
-        node_name = self.jarvis.hostfile[node_idx]
+        node_name = self.hostfile[node_idx]
         dest_path= self.config['experiment_path'] + "/" + "machine_learning" + "_runs/" + stage_idx + "/" + task_idx
         stage_name="machine_learning" # "machine_learning" : faster, "training" : slower
         yaml_path = self.config['ddmd_path'] + "/test/bba/" + stage_name + "_stage_test.yaml"
@@ -410,9 +410,9 @@ class Ddmd(Application):
         stage_idx = "stage" + str((self.config['stage_idx'])).zfill(4)
         model_tag = stage_idx + "_" + task_idx
         node_idx = 0 
-        if len(self.jarvis.hostfile) > 1:
+        if len(self.hostfile) > 1:
             node_idx = 1 # TODO: allow specify nodes?
-        node_name = self.jarvis.hostfile[node_idx]
+        node_name = self.hostfile[node_idx]
         stage_name="inference" 
         dest_path= self.config['experiment_path'] + f"/{stage_name}_runs/" + stage_idx + "/" + task_idx
         yaml_path = self.config['ddmd_path'] + "/test/bba/" + stage_name + "_stage_test.yaml"
@@ -643,7 +643,7 @@ class Ddmd(Application):
         # FIXME: this will kill all python processes
         print("INFO: killing all python processes")
         Kill('python',
-             PsshExecInfo(hostfile=self.jarvis.hostfile,
+             PsshExecInfo(hostfile=self.hostfile,
                           env=self.env)).run()
         
     def stop(self):

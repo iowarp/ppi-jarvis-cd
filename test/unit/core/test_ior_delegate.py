@@ -11,20 +11,17 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
-from jarvis_cd.core.config import Jarvis, JarvisConfig
+from jarvis_cd.core.config import Jarvis
 from jarvis_cd.core.pipeline import Pipeline
 
 
 def initialize_jarvis_for_test(config_dir, private_dir, shared_dir):
     """Helper function to properly initialize Jarvis for testing"""
-    # Create JarvisConfig and initialize it
-    jarvis_config = JarvisConfig()
-    jarvis_config.initialize(config_dir, private_dir, shared_dir, force=True)
+    # Get Jarvis singleton and initialize it
+    jarvis = Jarvis.get_instance()
+    jarvis.initialize(config_dir, private_dir, shared_dir, force=True)
 
-    # Initialize Jarvis singleton
-    Jarvis.initialize(jarvis_config, config_dir, private_dir, shared_dir)
-
-    return Jarvis.get_instance()
+    return jarvis
 
 
 class TestIorDelegation(unittest.TestCase):

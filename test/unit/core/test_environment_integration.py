@@ -111,9 +111,9 @@ class TestEnvironmentIntegration(unittest.TestCase):
 
         # Verify named environment file was created
         # Named environments are stored in ~/.ppi-jarvis/env/, not in the config dir
-        from jarvis_cd.core.config import JarvisConfig
-        jarvis_config = JarvisConfig()
-        env_file = jarvis_config.jarvis_root / 'env' / 'test_env.yaml'
+        from jarvis_cd.core.config import Jarvis
+        jarvis = Jarvis.get_instance()
+        env_file = jarvis.jarvis_root / 'env' / 'test_env.yaml'
         self.assertTrue(env_file.exists(), f"Named environment file not created: {env_file}")
         print(f"Named environment 'test_env' created at: {env_file}")
 
@@ -343,9 +343,9 @@ class TestEnvironmentEdgeCases(unittest.TestCase):
 
         # Verify all variables are in the environment
         # Named environments are stored in jarvis root, not config dir
-        from jarvis_cd.core.config import JarvisConfig
-        jarvis_config = JarvisConfig()
-        env_file = jarvis_config.jarvis_root / 'env' / 'multi_var_env.yaml'
+        from jarvis_cd.core.config import Jarvis
+        jarvis = Jarvis.get_instance()
+        env_file = jarvis.jarvis_root / 'env' / 'multi_var_env.yaml'
         self.assertTrue(env_file.exists())
 
         with open(env_file, 'r') as f:

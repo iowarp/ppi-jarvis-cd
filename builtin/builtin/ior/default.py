@@ -40,7 +40,7 @@ class IorDefault(Application):
         parent_dir = str(pathlib.Path(out).parent)
         Mkdir(parent_dir,
               PsshExecInfo(env=self.mod_env,
-                           hostfile=self.jarvis.hostfile)).run()
+                           hostfile=self.hostfile)).run()
 
     def start(self):
         """
@@ -91,7 +91,7 @@ class IorDefault(Application):
 
         Exec(cmd_list,
              MpiExecInfo(env=self.mod_env,
-                         hostfile=self.jarvis.hostfile,
+                         hostfile=self.hostfile,
                          nprocs=self.config['nprocs'],
                          ppn=self.config['ppn'])).run()
 
@@ -113,7 +113,7 @@ class IorDefault(Application):
         """
         Rm(self.config['out'] + '*',
            PsshExecInfo(env=self.env,
-                        hostfile=self.jarvis.hostfile)).run()
+                        hostfile=self.hostfile)).run()
 
     def _get_stat(self, stat_dict):
         """

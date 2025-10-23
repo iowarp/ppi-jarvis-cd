@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from jarvis_cd.core.pipeline_index import PipelineIndexManager
-from jarvis_cd.core.config import JarvisConfig
+from jarvis_cd.core.config import Jarvis
 
 
 class TestPipelineIndexManager(unittest.TestCase):
@@ -30,8 +30,9 @@ class TestPipelineIndexManager(unittest.TestCase):
         os.makedirs(self.private_dir, exist_ok=True)
         os.makedirs(self.shared_dir, exist_ok=True)
 
-        # Create mock config
-        self.config = JarvisConfig(self.jarvis_root)
+        # Reset and initialize Jarvis singleton
+        Jarvis._instance = None
+        self.config = Jarvis(self.jarvis_root)
         self.config.initialize(self.config_dir, self.private_dir, self.shared_dir)
         self.manager = PipelineIndexManager(self.config)
 

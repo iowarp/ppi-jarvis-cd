@@ -9,7 +9,7 @@ name: ior_container_test
 # No env field - will capture current environment automatically
 
 # Container configuration
-container_name: ior_test_container
+container_build: ior_test_container
 container_engine: docker
 container_base: iowarp/iowarp-deps:ai
 

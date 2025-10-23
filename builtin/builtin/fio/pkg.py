@@ -160,7 +160,7 @@ class Fio(Application):
         # pipe_stdout=self.config['log'] 
         Exec(' '.join(cmd),
              LocalExecInfo(env=self.mod_env,
-                         hostfile=self.jarvis.hostfile)).run()
+                         hostfile=self.hostfile)).run()
         
     def stop(self):
         """
