@@ -903,7 +903,7 @@ class Pipeline:
             # No env field defined - automatically build environment
             try:
                 from jarvis_cd.core.environment import EnvironmentManager
-                env_manager = EnvironmentManager(self.jarvis.jarvis_config)
+                env_manager = EnvironmentManager(self.jarvis)
                 self.env = env_manager._capture_current_environment()
                 print(f"Auto-built environment with {len(self.env)} variables (no 'env' field in pipeline)")
             except Exception as e:
@@ -914,14 +914,14 @@ class Pipeline:
             env_name = env_field
             try:
                 from jarvis_cd.core.environment import EnvironmentManager
-                env_manager = EnvironmentManager(self.jarvis.jarvis_config)
+                env_manager = EnvironmentManager(self.jarvis)
                 self.env = env_manager.load_named_environment(env_name)
             except Exception as e:
                 # Named environment doesn't exist - build it automatically
                 print(f"Named environment '{env_name}' does not exist. Building it now...")
                 try:
                     from jarvis_cd.core.environment import EnvironmentManager
-                    env_manager = EnvironmentManager(self.jarvis.jarvis_config)
+                    env_manager = EnvironmentManager(self.jarvis)
                     # Build the named environment from current environment (no additional args)
                     env_manager.build_named_environment(env_name, [])
                     # Now load the newly created environment

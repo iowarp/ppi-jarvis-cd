@@ -120,6 +120,16 @@ class Pkg:
         # Set pkg_dir to the directory containing this package's source
         self._detect_pkg_dir()
 
+    @property
+    def hostfile(self) -> Hostfile:
+        """
+        Get the effective hostfile for this package.
+        Property wrapper around get_hostfile() for convenience.
+
+        :return: Hostfile object
+        """
+        return self.get_hostfile()
+
     def get_hostfile(self) -> Hostfile:
         """
         Get the effective hostfile for this package.
