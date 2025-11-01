@@ -9,6 +9,8 @@ jarvis_envs
 .jarvis_env
 hostfile.txt
 
+.env*
+
 # C extensions
 *.so
 

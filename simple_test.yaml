@@ -1,9 +1,0 @@
-name: simple_test_pipeline
-env: chimaera
-
-# Simple test without interceptors first
-pkgs:
-  - pkg_type: example_app
-    pkg_name: simple_test
-    message: "Simple test without interceptors"
-    output_file: simple_test_output.txt
