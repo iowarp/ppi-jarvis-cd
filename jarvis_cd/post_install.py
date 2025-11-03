@@ -19,53 +19,28 @@ def install_builtin_packages():
 
     # Find builtin source directory
     try:
-        import jarvis_cd
-        jarvis_cd_path = Path(jarvis_cd.__file__).parent
+        # Get the directory containing this file
+        this_file = Path(__file__).resolve()
+        project_root = this_file.parent.parent  # Go up from jarvis_cd/post_install.py to project root
+        builtin_source = project_root / 'builtin'
 
-        # Try multiple locations
-        possible_sources = [
-            jarvis_cd_path.parent / 'builtin',  # Installed alongside jarvis_cd
-            jarvis_cd_path.parent.parent / 'builtin',  # Development mode
-        ]
-
-        builtin_source = None
-        for source in possible_sources:
-            if source.exists() and (source / 'builtin').exists():
-                builtin_source = source
-                break
-
-        if builtin_source:
+        if builtin_source.exists():
             print(f"Installing Jarvis-CD builtin packages...")
             print(f"Source: {builtin_source}")
             print(f"Target: {builtin_target}")
 
-            # In development mode (if we can write to source), create symlink
-            # Otherwise copy
-            try:
-                if os.access(builtin_source, os.W_OK):
-                    # Development mode - create symlink
-                    builtin_target.symlink_to(builtin_source.absolute())
-                    print(f"Created symlink (dev mode): {builtin_target} -> {builtin_source}")
-                else:
-                    # Production mode - copy
-                    shutil.copytree(builtin_source, builtin_target)
-                    print(f"Copied builtin packages to {builtin_target}")
+            # Always copy
+            shutil.copytree(builtin_source, builtin_target)
+            print(f"Copied builtin packages to {builtin_target}")
 
-                # Count packages
-                builtin_pkgs = builtin_target / 'builtin'
-                if builtin_pkgs.exists():
-                    packages = [d for d in builtin_pkgs.iterdir()
-                               if d.is_dir() and d.name != '__pycache__']
-                    print(f"Successfully installed {len(packages)} builtin packages")
-            except OSError:
-                # Symlink failed, try copy
-                if builtin_target.is_symlink():
-                    builtin_target.unlink()
-                shutil.copytree(builtin_source, builtin_target)
-                print(f"Copied builtin packages to {builtin_target}")
+            # Count packages
+            builtin_pkgs = builtin_target / 'builtin'
+            if builtin_pkgs.exists():
+                packages = [d for d in builtin_pkgs.iterdir()
+                           if d.is_dir() and d.name != '__pycache__']
+                print(f"Successfully installed {len(packages)} builtin packages")
         else:
-            print(f"Warning: Could not find builtin packages directory")
-            print(f"Searched: {', '.join(str(p) for p in possible_sources)}")
+            print(f"Warning: Could not find builtin packages directory at {builtin_source}")
 
     except Exception as e:
         print(f"Warning: Could not install builtin packages: {e}")
