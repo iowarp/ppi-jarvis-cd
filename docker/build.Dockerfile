@@ -7,8 +7,9 @@ LABEL description="IOWarp ppi-jarvis-cd Docker image"
 COPY . /workspace
 WORKDIR /workspace
 
-# Install the package
-RUN pip install -e .
+# Clean any existing build artifacts and install the package
+RUN sudo rm -rf *.egg-info build dist && \
+    sudo pip install --break-system-packages .
 
 # Add ppi-jarvis-cd to Spack configuration
 RUN echo "  py-ppi-jarvis-cd:" >> ~/.spack/packages.yaml && \
