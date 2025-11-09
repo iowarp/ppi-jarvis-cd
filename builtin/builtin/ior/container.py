@@ -73,7 +73,7 @@ RUN . "${SPACK_DIR}/share/spack/setup-env.sh" && \\
             base_image = self.pipeline.container_base
         else:
             # Fallback to default if pipeline doesn't have container_base
-            base_image = 'iowarp/iowarp-deps:ai'
+            base_image = 'iowarp/iowarp-build:latest'
 
         # sshd always listens on the configured port inside the container
         # - For host network: sshd listens directly on this port

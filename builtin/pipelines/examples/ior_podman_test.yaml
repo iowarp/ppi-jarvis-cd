@@ -11,7 +11,7 @@ name: ior_podman_test
 # Container configuration
 container_build: ior_test_container_podman
 container_engine: podman
-container_base: docker.io/iowarp/iowarp-deps:ai
+container_base: docker.io/iowarp/iowarp-build:latest
 
 pkgs:
   # IOR benchmark with container deployment

@@ -238,7 +238,7 @@ name: my_containerized_pipeline
 # Container configuration (all fields optional)
 container_name: my_app_container                    # Container/image name (required for containerization)
 container_engine: podman                            # Container engine: docker or podman (default: podman)
-container_base: docker.io/iowarp/iowarp-deps:ai    # Base image to build FROM
+container_base: docker.io/iowarp/iowarp-build:latest    # Base image to build FROM
 container_ssh_port: 2222                            # SSH port for container communication (default: 2222)
 
 # Optional: Custom extensions to Docker compose file (merged into service config)
@@ -262,7 +262,7 @@ pkgs:
 |-------|------|---------|-------------|
 | `container_name` | string | `""` (not containerized) | Name for the container image. If set, enables containerization |
 | `container_engine` | string | `"podman"` | Container engine to use (`docker` or `podman`) |
-| `container_base` | string | `"iowarp/iowarp-deps:ai"` | Base Docker image to build from |
+| `container_base` | string | `"iowarp/iowarp-build:latest"` | Base Docker image to build from |
 | `container_ssh_port` | int | `2222` | SSH port for inter-container and container-host communication |
 | `container_extensions` | dict | `{}` | Custom Docker Compose configuration merged into service definition |
 
@@ -304,7 +304,7 @@ name: ior_container_benchmark
 # Container configuration
 container_name: ior_benchmark_container
 container_engine: podman
-container_base: docker.io/iowarp/iowarp-deps:ai
+container_base: docker.io/iowarp/iowarp-build:latest
 container_ssh_port: 2222
 
 pkgs:
@@ -334,7 +334,7 @@ name: mixed_deployment_pipeline
 # Container configuration for packages that need it
 container_name: app_container
 container_engine: docker
-container_base: docker.io/iowarp/iowarp-deps:ai
+container_base: docker.io/iowarp/iowarp-build:latest
 
 pkgs:
   # Run database on bare metal (better performance)

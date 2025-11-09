@@ -7,7 +7,7 @@ I have done a hard reset. Currently, we are building container images during con
 env: env_name
 container_name: my_iowarp
 container_engine: podman
-container_base: iowarp/iowarp-deps:ai
+container_base: iowarp/iowarp-build:latest
 pkgs:
 interceptors:
 ```

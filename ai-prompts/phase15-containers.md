@@ -21,7 +21,7 @@ The container.py should have the following
 
 This will produce a pipeline, container, podman-compose file. 
 Store a template of these two files.
-The container should inherit from iowarp/iowarp-deps:ai and install ior with spack. This has spack installed already.
+The container should inherit from iowarp/iowarp-build:latest and install ior with spack. This has spack installed already.
 
 The pipeline, dockerfile, and compose file should be placed in the private directory for the package.
 
@@ -32,7 +32,7 @@ as defined for the package.
 
 #### Dockerfile
 ```
-FROM iowarp/iowarp-deps:ai
+FROM iowarp/iowarp-build:latest
 
 # Disable prompt during packages installation.
 ARG DEBIAN_FRONTEND=noninteractive

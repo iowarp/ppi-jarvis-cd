@@ -37,7 +37,7 @@ class Pipeline:
         self.container_build = ""  # Empty string means use pre-built image (no augment_container)
         self.container_image = ""  # Image to use when container_build is empty
         self.container_engine = "podman"  # Default container engine
-        self.container_base = "iowarp/iowarp-deps:ai"  # Base image (only used when container_build is set)
+        self.container_base = "iowarp/iowarp-build:latest"  # Base image (only used when container_build is set)
         self.container_ssh_port = 2222  # Default SSH port for containers
         self.container_extensions = {}  # Custom extensions to Docker compose file
 
@@ -840,7 +840,7 @@ class Pipeline:
         self.container_build = pipeline_config.get('container_build', pipeline_config.get('container_name', ''))  # Backwards compat
         self.container_image = pipeline_config.get('container_image', '')
         self.container_engine = pipeline_config.get('container_engine', 'podman')
-        self.container_base = pipeline_config.get('container_base', 'iowarp/iowarp-deps:ai')
+        self.container_base = pipeline_config.get('container_base', 'iowarp/iowarp-build:latest')
         self.container_ssh_port = pipeline_config.get('container_ssh_port', 2222)
         self.container_extensions = pipeline_config.get('container_extensions', {})
 
@@ -962,7 +962,7 @@ class Pipeline:
         self.container_build = pipeline_def.get('container_build', pipeline_def.get('container_name', ''))  # Backwards compat
         self.container_image = pipeline_def.get('container_image', '')
         self.container_engine = pipeline_def.get('container_engine', 'podman')
-        self.container_base = pipeline_def.get('container_base', 'iowarp/iowarp-deps:ai')
+        self.container_base = pipeline_def.get('container_base', 'iowarp/iowarp-build:latest')
         self.container_ssh_port = pipeline_def.get('container_ssh_port', 2222)
         self.container_extensions = pipeline_def.get('container_extensions', {})
 

@@ -545,7 +545,7 @@ name: my_pipeline
 deploy_mode: container
 container_name: my_app_container
 container_engine: podman
-container_base: docker.io/iowarp/iowarp-deps:ai
+container_base: docker.io/iowarp/iowarp-build:latest
 
 pkgs:
   - pkg_type: builtin.ior

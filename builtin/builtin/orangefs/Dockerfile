@@ -1,4 +1,4 @@
-FROM iowarp/iowarp-deps:ai
+FROM iowarp/iowarp-build:latest
 
 # Set non-interactive frontend to avoid prompts
 ENV DEBIAN_FRONTEND=noninteractive
